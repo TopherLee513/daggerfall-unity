@@ -4,15 +4,20 @@
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Lypyl (lypyl@dfworkshop.net)
-// Contributors:    
+// Contributors:    TheLacus
 // 
 // Notes:
 //
 
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Reflection;
 using DaggerfallWorkshop.Utility;
 
@@ -37,6 +42,10 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         private DFModMessageReceiver messageReceiver;
         private Table textdatabase;
         private bool textdatabaseLoaded;
+
+#if UNITY_EDITOR
+        private readonly Type[] types;
+#endif
 
         #endregion
 
@@ -131,6 +140,23 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         }
 
         /// <summary>
+        /// A directory for persistent mod configuration.
+        /// </summary>
+        internal string ConfigurationDirectory
+        {
+            get { return Path.Combine(ModManager.Instance.ModDataDirectory, GUID); }
+        }
+
+        /// <summary>
+        /// A directory for peristent mod data. It is ensured that the directory is writable but not that exists.
+        /// Use <see cref="Directory.CreateDirectory(string)"/> before accessing it.
+        /// </summary>
+        public string PersistentDataDirectory
+        {
+            get { return Path.Combine(ConfigurationDirectory, "Data"); }
+        }
+
+        /// <summary>
         /// An optional callback that allows to efficiently send messages to this mod without using reflections.
         /// </summary>
         public DFModMessageReceiver MessageReceiver
@@ -154,6 +180,14 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// and store custom data associated to a specific save on disk.
         /// </summary>
         public IHasModSaveData SaveDataInterface { internal get; set; }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// If true this mod is associated to a standalone manifest file rather than an assetbundle.
+        /// This is only useful for mod development and testing, specifically to benefit of debuggers.
+        /// </summary>
+        public bool IsVirtual { get; private set; }
+#endif
 
         #endregion
 
@@ -197,9 +231,63 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
 #endif
         }
 
+#if UNITY_EDITOR
+        /// <summary>
+        /// Makes a mod from a manifest file without an assetbundle for debug.
+        /// </summary>
+        /// <param name="manifestPath">Path to manifest file.</param>
+        /// <param name="modInfo">Content of manifest file.</param>
+        internal Mod(string manifestPath, ModInfo modInfo)
+        {
+            if (!manifestPath.EndsWith(ModManager.MODINFOEXTENSION))
+                throw new ArgumentException(string.Format("Path is rejected because it doesn't end with {0}", ModManager.MODINFOEXTENSION), "manifestPath");
+
+            if (modInfo == null)
+                throw new ArgumentNullException("modInfo");
+
+            IsVirtual = true;
+            this.modInfo = modInfo;
+            loadedAssets = new Dictionary<string, LoadedAsset>();
+            types = modInfo.Files.Where(x => x.EndsWith(".cs"))
+                .Select(x => AssetDatabase.LoadAssetAtPath<MonoScript>(x))
+                .Where(x => x != null).Select(x => x.GetClass()).Where(x => x != null).ToArray();
+            fileName = Path.GetFileName(manifestPath.Remove(manifestPath.IndexOf(ModManager.MODINFOEXTENSION)));
+            Directory.CreateDirectory(dirPath = Path.Combine(ModManager.Instance.ModDirectory, "Virtual"));
+            HasSettings = ModSettings.ModSettingsData.HasSettings(this);
+        }
+#endif
+
         #endregion
 
         #region Public Methods
+
+        /// <summary>
+        /// Checks if this mod contains an asset with the given name.
+        /// </summary>
+        /// <param name="assetName">The name of the asset.</param>
+        /// <returns>True if asset is provided by this mod.</returns>
+        public bool HasAsset(string assetName)
+        {
+#if UNITY_EDITOR
+            if (IsVirtual)
+                return modInfo.Files.Any(CompareNameWithPath(assetName));
+#endif
+
+            if (assetBundle)
+                return assetBundle.Contains(assetName);
+
+            return false;
+        }
+
+        /// <summary>
+        /// Checks if an asset has already been loaded and can be retrieved without loading it again.
+        /// </summary>
+        /// <param name="assetName">The name of the asset.</param>
+        /// <returns>True if the asset is already loaded.</returns>
+        public bool IsAssetLoaded(string assetName)
+        {
+            return loadedAssets.ContainsKey(assetName);
+        }
 
         /// <summary>
         /// Loads an asset from the assetbundle of this mod and cache it.
@@ -336,6 +424,51 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         }
 
         /// <summary>
+        /// Seeks assets inside a directory provided by this mod. An asset is accepted if its directory ends with the given subdirectory.
+        /// For example "Assets/Textures" matches "Water.png" from "Assets/Game/Mods/Example/Assets/Textures/Water.png".
+        /// </summary>
+        /// <param name="names">Null or a buffer of names. Will be filled with matches with the extension but without the directory.</param>
+        /// <param name="relativeDirectory">A relative directory with forward slashes (i.e. "Assets/Textures").</param>
+        /// <param name="extension">An extension including the dots (i.e ".json") or null.</param>
+        /// <returns>The number of assets found.</returns>
+        public int FindAssetNames(ref List<string> names, string relativeDirectory, string extension = null)
+        {
+            if (relativeDirectory == null)
+                throw new ArgumentNullException("relativeDirectory");
+
+            int initialCount = names != null ? names.Count : 0;
+
+            for (int i = 0; i < ModInfo.Files.Count; i++)
+            {
+                string path = ModInfo.Files[i];
+
+                // Must have at least one folder
+                int nameStart = path.LastIndexOf('/');
+                if (nameStart == -1)
+                    continue;
+
+                // Must be rooted at Assets or a child directory
+                int dirStart = nameStart - relativeDirectory.Length;
+                if (dirStart > 0 && path[dirStart - 1] != '/')
+                    continue;
+
+                // Validate name
+                if (extension != null && string.CompareOrdinal(path, path.Length - extension.Length, extension, 0, extension.Length) != 0)
+                    continue;
+
+                // Validate directory
+                if (string.CompareOrdinal(path, dirStart, relativeDirectory, 0, relativeDirectory.Length) != 0)
+                    continue;
+
+                if (names == null)
+                    names = new List<string>();
+                names.Add(path.Substring(nameStart + 1));
+            }
+
+            return names != null ? names.Count - initialCount : 0;
+        }
+
+        /// <summary>
         /// Return Type from Assemblies using name of type
         /// </summary>
         /// <param name="type">name of Type</param>
@@ -406,8 +539,9 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
             // Get fallback table from mod
             if (!textdatabaseLoaded)
             {
-                if (assetBundle.Contains("textdatabase.txt"))
-                    textdatabase = new Table(GetAsset<TextAsset>("textdatabase.txt").ToString());
+                string tableContent = ReadText("textdatabase.txt");
+                if (tableContent != null)
+                    textdatabase = new Table(tableContent);
                 textdatabaseLoaded = true;
             }
 
@@ -455,6 +589,20 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                     la = loadedAssets[assetName];
                     return la.Obj as T;
                 }
+
+#if UNITY_EDITOR
+                if (IsVirtual)
+                {
+                    la.Obj = LoadAssetFromResources<T>(assetName);
+                    if (la.Obj != null)
+                    {
+                        la.T = la.Obj.GetType();
+                        loadedAssets.Add(assetName, la);
+                    }
+                    return la.Obj as T;
+                }
+#endif
+
                 if (assetBundle == null)
                     loadedBundle = LoadAssetBundle();
 
@@ -478,6 +626,48 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 return null;
             }
         }
+
+        /// <summary>
+        /// Gets content of a text file.
+        /// </summary>
+        /// <param name="name">Name of text file.</param>
+        /// <returns>Content of text file or null.</returns>
+        private string ReadText(string name)
+        {
+#if UNITY_EDITOR
+            if (IsVirtual)
+            {
+                string path = modInfo.Files.FirstOrDefault(CompareNameWithPath(name));
+                return path != null ? File.ReadAllText(path) : null;
+            }
+#endif
+
+            if (assetBundle.Contains(name))
+                return GetAsset<TextAsset>(name).ToString();
+
+            return null;
+        }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// Load an asset from its name. The asset path must be defined in the manifest file.
+        /// </summary>
+        /// <typeparam name="T">Asset type.</typeparam>
+        /// <param name="name">Name of the asset.</param>
+        /// <returns>The loaded asset or null.</returns>
+        private T LoadAssetFromResources<T>(string name) where T : UnityEngine.Object
+        {
+            return modInfo.Files.Where(CompareNameWithPath(name)).Select(x =>
+                AssetDatabase.LoadAssetAtPath<T>(x)).FirstOrDefault(x => x != null);
+        }
+
+        private Func<string, bool> CompareNameWithPath(string name)
+        {
+            if (Path.HasExtension(name))
+                return x => Path.GetFileName(x).ToLower() == name;
+            return x => Path.GetFileNameWithoutExtension(x).ToLower() == name;
+        }
+#endif
 
         #endregion
 
@@ -578,6 +768,11 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// <returns></returns>
         public List<Assembly> CompileSourceToAssemblies()
         {
+#if UNITY_EDITOR
+            if (IsVirtual)
+                return null;
+#endif
+
             List<string> stringSource = new List<string>(sources.Count);
             Assembly assembly = null;
 
@@ -622,10 +817,22 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// <returns></returns>
         public List<SetupOptions> FindModLoaders(StateManager.StateTypes state)
         {
+            List<SetupOptions> modLoaders;
+
+#if UNITY_EDITOR
+            if (IsVirtual)
+            {
+                modLoaders = new List<SetupOptions>();
+                foreach (Type type in types)
+                    FindModLoaders(state, type, modLoaders);
+                modLoaders.Sort();
+                return modLoaders;           
+            }
+#endif
             if (assemblies == null || assemblies.Count < 1)
                 return null;
 
-            List<SetupOptions> modLoaders = new List<SetupOptions>(1);
+            modLoaders = new List<SetupOptions>(1);
 
             for (int i = 0; i < assemblies.Count; i++)
             {
@@ -635,33 +842,8 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
 
                     foreach (Type t in types)
                     {
-                        if (!t.IsClass)
-                            continue;
-
-                        foreach (MethodInfo mi in t.GetMethods())
-                        {
-                            if (!mi.IsPublic || !mi.IsStatic)
-                                continue;
-                            else if (mi.ContainsGenericParameters)
-                                continue;
-
-                            Invoke initAttribute = (Invoke)Attribute.GetCustomAttribute(mi, typeof(Invoke));
-                            if (initAttribute == null)
-                                continue;
-                            else if (initAttribute.StartState != state)
-                                continue;
-                            ParameterInfo[] pi = mi.GetParameters();
-                            if (pi.Length != 1)
-                                continue;
-                            else if (pi[0].ParameterType != typeof(InitParams))
-                                continue;
-                            SetupOptions options = new SetupOptions(initAttribute.Priority, this, mi);
-#if DEBUG
-                            Debug.Log(string.Format("found new loader: {0} for mod: {1}", options.mi.Name, this.Title));
-#endif
-                            modLoaders.Add(options);
-
-                        }
+                        if (t.IsClass)
+                            FindModLoaders(state, t, modLoaders);
                     }
                 }
                 catch (Exception ex)
@@ -675,14 +857,32 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
             return modLoaders;
         }
 
-        /// <summary>
-        /// Checks if an asset has already been loaded and can be retrieved without loading it again.
-        /// </summary>
-        /// <param name="assetName">The name of the asset.</param>
-        /// <returns>True if the asset is already loaded.</returns>
-        public bool IsAssetLoaded(string assetName)
+        private void FindModLoaders(StateManager.StateTypes state, Type type, List<SetupOptions> modLoaders)
         {
-            return loadedAssets.ContainsKey(assetName);
+            foreach (MethodInfo mi in type.GetMethods())
+            {
+                if (!mi.IsPublic || !mi.IsStatic)
+                    continue;
+                else if (mi.ContainsGenericParameters)
+                    continue;
+
+                Invoke initAttribute = (Invoke)Attribute.GetCustomAttribute(mi, typeof(Invoke));
+                if (initAttribute == null)
+                    continue;
+                else if (initAttribute.StartState != state)
+                    continue;
+                ParameterInfo[] pi = mi.GetParameters();
+                if (pi.Length != 1)
+                    continue;
+                else if (pi[0].ParameterType != typeof(InitParams))
+                    continue;
+                SetupOptions options = new SetupOptions(initAttribute.Priority, this, mi);
+#if DEBUG
+                Debug.Log(string.Format("found new loader: {0} for mod: {1}", options.mi.Name, this.Title));
+#endif
+                modLoaders.Add(options);
+
+            }
         }
 
         private bool AddAsset(string assetName, UnityEngine.Object asset)
@@ -739,8 +939,13 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// <returns>The loaded asset bundle or null.</returns>
         public AssetBundle LoadAssetBundle()
         {
-            string abPath = System.IO.Path.Combine(dirPath, FileName + ModManager.MODEXTENSION);
-            if (!System.IO.File.Exists(abPath))
+#if UNITY_EDITOR
+            if (IsVirtual)
+                return null;
+#endif
+
+            string abPath = Path.Combine(dirPath, FileName + ModManager.MODEXTENSION);
+            if (!File.Exists(abPath))
                 return null;
 
             AssetBundle ab = AssetBundle.LoadFromFile(abPath);
@@ -757,8 +962,13 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// </summary>
         public IEnumerator LoadAssetBundleAsync()
         {
-            string abPath = System.IO.Path.Combine(dirPath, FileName + ModManager.MODEXTENSION);
-            if (!System.IO.File.Exists(abPath))
+#if UNITY_EDITOR
+            if (IsVirtual)
+                yield break;
+#endif
+
+            string abPath = Path.Combine(dirPath, FileName + ModManager.MODEXTENSION);
+            if (!File.Exists(abPath))
                 yield break;
 
             AssetBundleCreateRequest request = AssetBundle.LoadFromFileAsync(abPath);

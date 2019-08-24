@@ -64,7 +64,7 @@ namespace DaggerfallWorkshop.Game.Items
                                                                     improvesTalentsEnchantPts, goodRepWithEnchantPts};
         static readonly ushort[] enchantmentPointCostsForNonParamTypes = { 0, 0x0F448, 0x0F63C, 0x0FF9C, 0x0FD44, 0, 0, 0, 0x384, 0x5DC, 0x384, 0x64, 0x2BC };
 
-        private enum BodyMorphology
+        public enum BodyMorphology
         {
             Argonian = 0,
             Elf = 1,
@@ -264,8 +264,8 @@ namespace DaggerfallWorkshop.Game.Items
             if (!Path.HasExtension(fileName))
                 fileName += ".TXT";
 
-            var entry = BookReplacement.FileNames.FirstOrDefault(x => x.Value == fileName);
-            return !entry.Equals(default(KeyValuePair<int, string>)) ? CreateBook(entry.Key) : null;
+            var entry = BookReplacement.BookMappingEntries.Values.FirstOrDefault(x => x.Name.Equals(fileName, StringComparison.Ordinal));
+            return entry.ID != 0 ? CreateBook(entry.ID) : null;
         }
 
         /// <summary>
@@ -296,7 +296,7 @@ namespace DaggerfallWorkshop.Game.Items
         {
             Array enumArray = DaggerfallUnity.Instance.ItemHelper.GetEnumArray(ItemGroups.Books);
             DaggerfallUnityItem book = new DaggerfallUnityItem(ItemGroups.Books, Array.IndexOf(enumArray, Books.Book0));
-            book.message = DaggerfallUnity.Instance.ItemHelper.getRandomBookID();
+            book.message = DaggerfallUnity.Instance.ItemHelper.GetRandomBookID();
             book.CurrentVariant = UnityEngine.Random.Range(0, book.TotalVariants);
             // Update item value for this book.
             BookFile bookFile = new BookFile();
@@ -917,7 +917,7 @@ namespace DaggerfallWorkshop.Game.Items
             item.CurrentVariant = variant;
         }
 
-        static BodyMorphology GetBodyMorphology(Races race)
+        public static BodyMorphology GetBodyMorphology(Races race)
         {
             switch (race)
             {

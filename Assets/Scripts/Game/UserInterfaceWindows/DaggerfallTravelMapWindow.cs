@@ -428,7 +428,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // If a goto location specified, find it and ask if player wants to travel.
             if (!string.IsNullOrEmpty(gotoLocation))
             {
-                OpenRegionPanel(gotoRegion);
+                mouseOverRegion = gotoRegion;
+                OpenRegionPanel(mouseOverRegion);
+                UpdateRegionLabel();
                 HandleLocationFindEvent(null, gotoLocation);
                 gotoLocation = null;
             }
@@ -449,6 +451,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             findButton = DaggerfallUI.AddButton(new Rect(3, 175, findButtonRect.width, findButtonRect.height), NativePanel);
             findButton.BackgroundTexture = findButtonTexture;
             findButton.OnMouseClick += FindlocationButtonClickHandler;
+            findButton.Enabled = false;
 
             // I'm At button
             atButton = DaggerfallUI.AddButton(new Rect(3, 186, atButtonRect.width, atButtonRect.height), NativePanel);
