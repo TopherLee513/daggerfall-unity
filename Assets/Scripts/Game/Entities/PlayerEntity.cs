@@ -819,10 +819,14 @@ namespace DaggerfallWorkshop.Game.Entity
             //this.vampireClan = character.vampireClan;
             //this.lastTimeVampireNeedToKillSatiated = character.lastTimeVampireNeedToKillSatiated;
 
+            // Trim name strings as these might contain trailing whitespace characters from classic save
+            name = name.Trim();
+            career.Name = career.Name.Trim();
+
             BackStory = character.backStory;
 
             if (maxHealth <= 0)
-                this.maxHealth = FormulaHelper.RollMaxHealth(level, career.HitPointsPerLevel);
+                this.maxHealth = FormulaHelper.RollMaxHealth(this);
             else
                 this.maxHealth = maxHealth;
 
@@ -1116,7 +1120,7 @@ namespace DaggerfallWorkshop.Game.Entity
                 gender = Genders.Male;
                 stats.SetPermanentFromCareer(career);
                 level = testPlayerLevel;
-                maxHealth = FormulaHelper.RollMaxHealth(level, career.HitPointsPerLevel);
+                maxHealth = FormulaHelper.RollMaxHealth(this);
                 name = testPlayerName;
                 stats.SetDefaults();
                 skills.SetDefaults();

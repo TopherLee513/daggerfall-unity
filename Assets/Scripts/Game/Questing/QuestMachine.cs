@@ -77,6 +77,7 @@ namespace DaggerfallWorkshop.Game.Questing
         List<Quest> questsToTombstone = new List<Quest>();
         List<Quest> questsToRemove = new List<Quest>();
         List<Quest> questsToInvoke = new List<Quest>();
+        List<StoredException> storedExceptions = new List<StoredException>();
 
         bool waitingForStartup = true;
         float startupTimer = 0;
@@ -223,7 +224,18 @@ namespace DaggerfallWorkshop.Game.Questing
 
         #endregion
 
-        #region Enums
+        #region Structs & Enums
+
+        /// <summary>
+        /// Stores information about an exception that would result in quest termination.
+        /// This is stored permanently with save data to help with troubleshooting.
+        /// </summary>
+        public struct StoredException
+        {
+            public string questName;
+            public Exception exception;
+            public string stackTrace;
+        }
 
         /// <summary>
         /// Fixed quest message constants.
@@ -420,12 +432,14 @@ namespace DaggerfallWorkshop.Game.Questing
                     if (IsProtectedQuest(quest))
                     {
                         LogFormat(quest, "Exception in protected quest. Logging only.");
+                        StoreQuestException(quest, ex);
                         LogFormat(ex.Message);
                     }
                     else
                     {
                         LogFormat(quest, "Error in quest follows. Terminating quest runtime.");
                         LogFormat(ex.Message);
+                        StoreQuestException(quest, ex);
                         RaiseOnQuestErrorTerminationEvent(quest);
                         questsToRemove.Add(quest);
                     }
@@ -1374,12 +1388,18 @@ namespace DaggerfallWorkshop.Game.Questing
                 // Get the Quest object referenced by this link
                 Quest quest = GetQuest(link.questUID);
                 if (quest == null)
-                    throw new Exception(string.Format("CullResourceSiteLink() could not find active quest for UID {0}", link.questUID));
+                {
+                    Debug.LogWarningFormat("CullResourceTarget() could not find active quest for UID {0}", link.questUID);
+                    return;
+                }
 
                 // Get the Place resource referenced by this link
                 Place place = quest.GetPlace(link.placeSymbol);
                 if (place == null)
-                    throw new Exception(string.Format("CullResourceSiteLink() could not find Place symbol {0} in quest UID {1}", link.placeSymbol, link.questUID));
+                {
+                    Debug.LogWarningFormat("CullResourceTarget() could not find Place symbol {0} in quest UID {1}", link.placeSymbol, link.questUID);
+                    return;
+                }
 
                 // Modify selected spawn QuestMarker for this Place
                 QuestMarker spawnMarker = place.SiteDetails.questSpawnMarkers[place.SiteDetails.selectedQuestSpawnMarker];
@@ -1427,6 +1447,48 @@ namespace DaggerfallWorkshop.Game.Questing
             }
 
             // TODO: Might need to hot-remove items here if timer expires while player inside target site
+        }
+
+        /// <summary>
+        /// Stores a quest exception in save file.
+        /// Should only be used for major quest-ending errors to help diagnose difficult issues.
+        /// Will only store a finite number of exceptions before overwriting oldest.
+        /// </summary>
+        /// <param name="quest">Quest throwing the exception.</param>
+        /// <param name="ex">Exception being thrown.</param>
+        public void StoreQuestException(Quest quest, Exception ex)
+        {
+            const int maxExceptions = 100;
+
+            // Remove oldest exception from list if going over max
+            if (storedExceptions.Count + 1 > maxExceptions)
+                storedExceptions.RemoveRange(0, 1);
+
+            // Store newest exception
+            StoredException storedException = new StoredException()
+            {
+                questName = quest.QuestName,
+                exception = ex,
+                stackTrace = ex.StackTrace,
+            };
+            storedExceptions.Add(storedException);
+        }
+
+        /// <summary>
+        /// Gets array of stored exceptions.
+        /// </summary>
+        public StoredException[] GetStoredExceptions()
+        {   
+            return storedExceptions.ToArray();
+        }
+
+        /// <summary>
+        /// Restores an array of stored exceptions.
+        /// </summary>
+        public void SetStoredExceptions(StoredException[] exceptions)
+        {
+            storedExceptions.Clear();
+            storedExceptions.AddRange(exceptions);
         }
 
         #endregion
@@ -1649,6 +1711,33 @@ namespace DaggerfallWorkshop.Game.Questing
                 Quest quest = new Quest();
                 quest.RestoreSaveData(questData);
                 quests.Add(quest.UID, quest);
+            }
+
+            // Remove site links with no matching quest
+            RemoveStaleSiteLinks();
+        }
+
+        void RemoveStaleSiteLinks()
+        {
+            List<SiteLink> siteLinksToRemove = new List<SiteLink>();
+            if (siteLinks != null && siteLinks.Count > 0)
+            {
+                foreach (SiteLink link in siteLinks)
+                {
+                    Quest quest = GetQuest(link.questUID);
+                    if (quest == null)
+                        siteLinksToRemove.Add(link);
+                }
+            }
+
+            // Remove any stale sitelinks pointing to quests no longer active
+            if (siteLinksToRemove.Count > 0)
+            {
+                foreach (SiteLink link in siteLinksToRemove)
+                {
+                    Debug.LogWarningFormat("Removing stale SiteLink {0}. Quest UID {1} not present.", link.placeSymbol.Original, link.questUID);
+                    siteLinks.Remove(link);
+                }
             }
         }
 

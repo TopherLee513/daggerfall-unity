@@ -57,6 +57,7 @@ SDFFontRendering=True
 EnableGeographicBackgrounds=False
 DungeonExitWagonPrompt=True
 IllegalRestWarning=True
+LoiterLimitInHours=3
 
 [Spells]
 EnableSpellLighting=True
@@ -113,3 +114,4 @@ PlayerTorchFromItems=False
 CombatVoices=True
 EnemyInfighting=True
 EnhancedCombatAI=True
+GuildQuestListBox=False

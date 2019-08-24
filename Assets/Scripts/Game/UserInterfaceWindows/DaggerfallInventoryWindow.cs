@@ -544,28 +544,31 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void SetupDefaultActionMode()
         {
-            bool proximityWagonAccess = false;
-            if (GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeon && !allowDungeonWagonAccess)
-                proximityWagonAccess = DungeonWagonAccessProximityCheck();
+            bool dungeonExitPromptY = allowDungeonWagonAccess;
+            if (!allowDungeonWagonAccess &&
+                GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeon &&
+                PlayerEntity.Items.Contains(ItemGroups.Transportation, (int)Transportation.Small_cart))
+                allowDungeonWagonAccess = DungeonWagonAccessProximityCheck();
 
             if (lootTarget != null)
                 SelectActionMode(ActionModes.Remove);
-            // Start with wagon if accessing from dungeon
-            else
+            else if (DaggerfallUnity.Settings.DungeonExitWagonPrompt)
             {
-                // Fast access: autoselect wagon when nearby
-                if (!DaggerfallUnity.Settings.DungeonExitWagonPrompt)
-                    allowDungeonWagonAccess |= proximityWagonAccess;
-
+                if (dungeonExitPromptY)
+                {
+                    SelectActionMode(ActionModes.Remove);
+                    ShowWagon(true);
+                }
+            }
+            else
+            { // !DaggerfallUnity.Settings.DungeonExitWagonPrompt
+                SelectActionMode(ActionModes.Equip);
                 if (allowDungeonWagonAccess)
                 {
                     ShowWagon(true);
-                    SelectActionMode(ActionModes.Remove);
+                    // do not change default ActionMode, this can be confusing
                 }
-                else
-                    SelectActionMode(ActionModes.Equip);
             }
-            allowDungeonWagonAccess |= proximityWagonAccess;
         }
 
         public override void OnPush()
@@ -1058,13 +1061,13 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             DaggerfallStaticDoors[] allDoors = GameObject.FindObjectsOfType<DaggerfallStaticDoors>();
             if (allDoors != null && allDoors.Length > 0)
             {
+                Vector3 playerPos = GameManager.Instance.PlayerObject.transform.position;
                 // Find closest door to player
                 float closestDoorDistance = float.MaxValue;
                 foreach (DaggerfallStaticDoors doors in allDoors)
                 {
                     int doorIndex;
                     Vector3 doorPos;
-                    Vector3 playerPos = GameManager.Instance.PlayerObject.transform.position;
                     if (doors.FindClosestDoorToPlayer(playerPos, -1, out doorPos, out doorIndex, DoorTypes.DungeonExit))
                     {
                         float distance = Vector3.Distance(playerPos, doorPos);
@@ -1180,15 +1183,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void WagonButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
-            if (!GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeon || allowDungeonWagonAccess)
-            {
-                if (PlayerEntity.Items.Contains(ItemGroups.Transportation, (int)Transportation.Small_cart))
-                    ShowWagon(!usingWagon);
-                else
-                    DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "noWagon"));
-            }
-            else
+            if (!PlayerEntity.Items.Contains(ItemGroups.Transportation, (int)Transportation.Small_cart))
+                DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "noWagon"));
+            else if (GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeon && !allowDungeonWagonAccess)
                 DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "exitTooFar"));
+            else
+                ShowWagon(!usingWagon);
         }
 
         private void InfoButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
@@ -1615,7 +1615,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // Handle normal items
             if (item.ItemGroup == ItemGroups.Books && !item.IsArtifact)
             {
-                DaggerfallUI.Instance.BookReaderWindow.BookTarget = item;
+                DaggerfallUI.Instance.BookReaderWindow.OpenBook(item);
                 if (DaggerfallUI.Instance.BookReaderWindow.IsBookOpen)
                 {
                     DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenBookReaderWindow);
