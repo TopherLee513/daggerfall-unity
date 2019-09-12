@@ -10,9 +10,6 @@
 //
 
 using UnityEngine;
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -29,6 +26,13 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         public const string MODEXTENSION        = ".dfmod";
         public const string MODINFOEXTENSION    = ".dfmod.json";
         public const string MODCONFIGFILENAME   = "Mod_Settings.json";
+
+#if UNITY_EDITOR
+        const string dataFolder = "EditorData";
+#else
+        const string dataFolder = "GameData";
+#endif
+
         bool alreadyAtStartMenuState            = false;
         static bool alreadyStartedInit          = false;
         [SerializeField]
@@ -85,11 +89,16 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// </summary>
         internal string ModDataDirectory
         {
-#if UNITY_EDITOR
-            get { return Path.Combine(Application.persistentDataPath, Path.Combine("Mods", "EditorData")); }
-#else
-            get { return Path.Combine(Application.persistentDataPath, Path.Combine("Mods", "GameData")); }
-#endif
+            get { return Path.Combine(Application.persistentDataPath, Path.Combine("Mods", dataFolder)); }
+        }
+
+        /// <summary>
+        /// The writable directory that holds mods cache, separated for build and editor to allow mods
+        /// to be developed and tested without affecting main game installation.
+        /// </summary>
+        internal string ModCacheDirectory
+        {
+            get { return Path.Combine(Application.temporaryCachePath, Path.Combine("Mods", dataFolder)); }
         }
 
         public static ModManager Instance { get; private set; }
@@ -102,14 +111,6 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         {
             if (string.IsNullOrEmpty(ModDirectory))
                 ModDirectory = Path.Combine(Application.streamingAssetsPath, "Mods");
-            if (!Directory.Exists(ModDirectory))
-            {
-                var di = Directory.CreateDirectory(ModDirectory);
-                if (!di.Exists)
-                {
-                    Debug.LogError(string.Format("Mod Directory doesn't exist {0}", ModDirectory));
-                }
-            }
 
             SetupSingleton();
 
@@ -117,7 +118,6 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 StateManager.OnStateChange += StateManager_OnStateChange;
         }
 
-        // Use this for initialization
         void Start()
         {
             if (!DaggerfallUnity.Settings.LypyL_ModSystem)
@@ -126,10 +126,19 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 StateManager.OnStateChange -= StateManager_OnStateChange;
                 Destroy(this);
             }
+
             mods = new List<Mod>();
-            FindModsFromDirectory();
-            LoadModSettings();
-            SortMods();
+
+            if (Directory.Exists(ModDirectory))
+            {
+                FindModsFromDirectory();
+                LoadModSettings();
+                SortMods();
+            }
+            else
+            {
+                Debug.LogWarningFormat("Mod system is enabled but directory {0} doesn't exist.", ModDirectory);
+            }
         }
 
         #endregion
@@ -379,8 +388,11 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         public bool TryGetAsset<T>(string name, bool clone, out T asset) where T : UnityEngine.Object
         {
             var query = from mod in EnumerateModsReverse()
-                        where mod.AssetBundle != null
-                        where mod.AssetBundle.Contains(name)
+#if UNITY_EDITOR
+                        where (mod.AssetBundle != null && mod.AssetBundle.Contains(name)) || (mod.IsVirtual && mod.HasAsset(name))
+#else
+                        where mod.AssetBundle != null && mod.AssetBundle.Contains(name)
+#endif
                         select mod.GetAsset<T>(name, clone);
 
             return (asset = query.FirstOrDefault()) != null;
@@ -401,8 +413,13 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         public bool TryGetAsset<T>(string[] names, bool clone, out T asset) where T : UnityEngine.Object
         {
             var query = from mod in EnumerateModsReverse()
+#if UNITY_EDITOR
+                        where mod.AssetBundle != null || mod.IsVirtual
+                        from name in names where mod.IsVirtual ? mod.HasAsset(name) : mod.AssetBundle.Contains(name)
+#else
                         where mod.AssetBundle != null
                         from name in names where mod.AssetBundle.Contains(name)
+#endif
                         select mod.GetAsset<T>(name, clone);
 
             return (asset = query.FirstOrDefault()) != null;
@@ -767,7 +784,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 Directory.CreateDirectory(ModManager.Instance.ModDataDirectory);
 
                 if (File.Exists(oldFilepath))
-                    File.Move(oldFilepath, filePath);
+                    MoveOldConfigFile(oldFilepath, filePath);
 
                 if (!File.Exists(filePath))
                     return false;
@@ -907,6 +924,25 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         internal static string GetText(string key)
         {
             return TextManager.Instance.GetText("ModSystem", key);
+        }
+
+        /// <summary>
+        /// An helper for moving mod config data from StreamingAssets to PersistentDataPath.
+        /// </summary>
+        internal static void MoveOldConfigFile(string sourceFileName, string destFileName)
+        {
+            try
+            {
+                if (File.Exists(destFileName))
+                    File.Delete(destFileName);
+
+                File.Move(sourceFileName, destFileName);
+                Debug.LogFormat("Moved {0} to {1}.", sourceFileName, destFileName);
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
         }
 
         #endregion

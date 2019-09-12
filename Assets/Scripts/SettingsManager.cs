@@ -71,6 +71,7 @@ namespace DaggerfallWorkshop
         public bool UseMipMapsInRetroMode { get; set; }
         public bool VSync { get; set; }
         public bool Fullscreen { get; set; }
+        public bool ExclusiveFullscreen { get; set; }
         public int FieldOfView { get; set; }
         public int ShadowResolutionMode { get; set; }
         public int MainFilterMode { get; set; }
@@ -119,6 +120,8 @@ namespace DaggerfallWorkshop
         public bool DungeonExitWagonPrompt { get; set; }
         public bool IllegalRestWarning { get; set; }
         public int LoiterLimitInHours { get; set; }
+        public bool LargeHUD { get; set; }
+        public float LargeHUDScale { get; set; }
 
         // [Spells]
         public bool EnableSpellLighting { get; set; }
@@ -200,6 +203,7 @@ namespace DaggerfallWorkshop
             UseMipMapsInRetroMode = GetBool(sectionVideo, "UseMipMapsInRetroMode");
             VSync = GetBool(sectionVideo, "VSync");
             Fullscreen = GetBool(sectionVideo, "Fullscreen");
+            ExclusiveFullscreen = GetBool(sectionVideo, "ExclusiveFullscreen");
             FieldOfView = GetInt(sectionVideo, "FieldOfView", 60, 80);
             MainFilterMode = GetInt(sectionVideo, "MainFilterMode", 0, 2);
             ShadowResolutionMode = GetInt(sectionVideo, "ShadowResolutionMode", 0, 3);
@@ -245,6 +249,8 @@ namespace DaggerfallWorkshop
             DungeonExitWagonPrompt = GetBool(sectionGUI, "DungeonExitWagonPrompt");
             IllegalRestWarning = GetBool(sectionGUI, "IllegalRestWarning");
             LoiterLimitInHours = GetInt(sectionGUI, "LoiterLimitInHours");
+            LargeHUD = GetBool(sectionGUI, "LargeHUD");
+            LargeHUDScale = GetFloat(sectionGUI, "LargeHUDScale", 0.25f, 2.0f);
 
             EnableSpellLighting = GetBool(sectionSpells, "EnableSpellLighting");
             EnableSpellShadows = GetBool(sectionSpells, "EnableSpellShadows");
@@ -313,6 +319,7 @@ namespace DaggerfallWorkshop
             SetBool(sectionVideo, "UseMipMapsInRetroMode", UseMipMapsInRetroMode);
             SetBool(sectionVideo, "VSync", VSync);
             SetBool(sectionVideo, "Fullscreen", Fullscreen);
+            SetBool(sectionVideo, "ExclusiveFullscreen", ExclusiveFullscreen);
             SetInt(sectionVideo, "FieldOfView", FieldOfView);
             SetInt(sectionVideo, "MainFilterMode", MainFilterMode);
             SetInt(sectionVideo, "ShadowResolutionMode", ShadowResolutionMode);
@@ -359,7 +366,8 @@ namespace DaggerfallWorkshop
             SetBool(sectionGUI, "DungeonExitWagonPrompt", DungeonExitWagonPrompt);
             SetBool(sectionGUI, "IllegalRestWarning", IllegalRestWarning);
             SetInt(sectionGUI, "LoiterLimitInHours", LoiterLimitInHours);
-
+            SetBool(sectionGUI, "LargeHUD", LargeHUD);
+            SetFloat(sectionGUI, "LargeHUDScale", LargeHUDScale);
 
             SetBool(sectionSpells, "EnableSpellLighting", EnableSpellLighting);
             SetBool(sectionSpells, "EnableSpellShadows", EnableSpellShadows);

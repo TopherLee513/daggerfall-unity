@@ -1253,7 +1253,7 @@ namespace DaggerfallWorkshop.Game.Questing
 
                 // Must have target resources
                 SiteDetails siteDetails = place.SiteDetails;
-                QuestMarker marker = siteDetails.questSpawnMarkers[siteDetails.selectedQuestItemMarker];
+                QuestMarker marker = siteDetails.selectedMarker;
                 if (marker.targetResources == null)
                 {
                     Log(quest, "IsIndividualQuestNPCAtSiteLink() found a SiteLink with no targetResources assigned.");
@@ -1288,15 +1288,14 @@ namespace DaggerfallWorkshop.Game.Questing
         }
 
         /// <summary>
-        /// Gets the quest spawn marker in player's current location.
+        /// Gets active marker in player's current location.
         /// </summary>
-        /// <param name="markerType">Get quest spawn or item marker.</param>
-        /// <param name="questMarkerOut">QuestMarker out.</param>
+        /// <param name="markerOut">Active QuestMarker out.</param>
         /// <param name="buildingOriginOut">Building origin in scene, or Vector3.zero if not inside a building.</param>
         /// <returns>True if successful.</returns>
-        public bool GetCurrentLocationQuestMarker(MarkerTypes markerType, out QuestMarker questMarkerOut, out Vector3 buildingOriginOut)
+        public bool GetCurrentLocationQuestMarker(out QuestMarker markerOut, out Vector3 buildingOriginOut)
         {
-            questMarkerOut = new QuestMarker();
+            markerOut = new QuestMarker();
             buildingOriginOut = Vector3.zero;
 
             // Get PlayerEnterExit for world context
@@ -1345,21 +1344,9 @@ namespace DaggerfallWorkshop.Game.Questing
                 if (place == null)
                     return false;
 
-                // Get spawn marker
-                QuestMarker spawnMarker = place.SiteDetails.questSpawnMarkers[place.SiteDetails.selectedQuestSpawnMarker];
-                if (markerType == MarkerTypes.QuestSpawn && spawnMarker.targetResources != null)
-                {
-                    questMarkerOut = spawnMarker;
-                    return true;
-                }
-
-                // Get item marker
-                QuestMarker itemMarker = place.SiteDetails.questItemMarkers[place.SiteDetails.selectedQuestItemMarker];
-                if (markerType == MarkerTypes.QuestItem && itemMarker.targetResources != null)
-                {
-                    questMarkerOut = itemMarker;
-                    return true;
-                }
+                // Get marker
+                markerOut = place.SiteDetails.selectedMarker;
+                return true;
             }
 
             return false;
@@ -1373,7 +1360,7 @@ namespace DaggerfallWorkshop.Game.Questing
         /// This needs to be done in a way that does not break resources allocated from other quests.
         /// </summary>
         /// <param name="resource">The resource to cull. No action taken if resource null or not found.</param>
-        public void CullResourceTarget(QuestResource resource)
+        public void CullResourceTarget(QuestResource resource, Symbol newPlace)
         {
             // Do nothing if resource null
             if (resource == null)
@@ -1384,6 +1371,10 @@ namespace DaggerfallWorkshop.Game.Questing
             {
                 // Get link
                 SiteLink link = siteLinks[i];
+
+                // Do nothing if this link not for same quest as resource
+                if (link.questUID != resource.ParentQuest.UID)
+                    continue;
 
                 // Get the Quest object referenced by this link
                 Quest quest = GetQuest(link.questUID);
@@ -1401,49 +1392,30 @@ namespace DaggerfallWorkshop.Game.Questing
                     return;
                 }
 
+                // Do nothing if old Place same as new Place
+                if (place.Symbol.Equals(newPlace))
+                    continue;
+
                 // Modify selected spawn QuestMarker for this Place
-                QuestMarker spawnMarker = place.SiteDetails.questSpawnMarkers[place.SiteDetails.selectedQuestSpawnMarker];
-                if (spawnMarker.targetResources != null)
+                QuestMarker selectedMarker = place.SiteDetails.selectedMarker;
+                if (selectedMarker.targetResources != null)
                 {
-                    for (int j = 0; j < spawnMarker.targetResources.Count; j++)
+                    for (int j = 0; j < selectedMarker.targetResources.Count; j++)
                     {
                         // Get target resource
-                        QuestResource existingResource = quest.GetResource(spawnMarker.targetResources[j]);
+                        QuestResource existingResource = quest.GetResource(selectedMarker.targetResources[j]);
                         if (existingResource == null)
                             continue;
 
                         // Cull matching resource
                         if (existingResource.Symbol.Equals(resource.Symbol))
                         {
-                            spawnMarker.targetResources.Remove(existingResource.Symbol);
-                            LogFormat(quest, "Removed spawn {0} from {1}", existingResource.Symbol.Original, place.Symbol.Original);
+                            selectedMarker.targetResources.Remove(existingResource.Symbol);
+                            LogFormat(quest, "Removed resource {0} from {1}", existingResource.Symbol.Original, place.Symbol.Original);
                             break;
                         }
                     }
                 }
-                place.SiteDetails.questSpawnMarkers[place.SiteDetails.selectedQuestSpawnMarker] = spawnMarker;
-
-                // Modify selected item QuestMarker for this Place
-                QuestMarker itemMarker = place.SiteDetails.questItemMarkers[place.SiteDetails.selectedQuestItemMarker];
-                if (itemMarker.targetResources != null)
-                {
-                    for (int j = 0; j < itemMarker.targetResources.Count; j++)
-                    {
-                        // Get target resource
-                        QuestResource existingResource = quest.GetResource(itemMarker.targetResources[j]);
-                        if (existingResource == null)
-                            continue;
-
-                        // Cull matching resource
-                        if (existingResource.Symbol.Equals(resource.Symbol))
-                        {
-                            itemMarker.targetResources.Remove(existingResource.Symbol);
-                            LogFormat(quest, "Removed item {0} from {1}", existingResource.Symbol.Original, place.Symbol.Original);
-                            break;
-                        }
-                    }
-                }
-                place.SiteDetails.questItemMarkers[place.SiteDetails.selectedQuestItemMarker] = itemMarker;
             }
 
             // TODO: Might need to hot-remove items here if timer expires while player inside target site
@@ -1711,6 +1683,7 @@ namespace DaggerfallWorkshop.Game.Questing
                 Quest quest = new Quest();
                 quest.RestoreSaveData(questData);
                 quests.Add(quest.UID, quest);
+                quest.ReassignLegacyQuestMarkers();
             }
 
             // Remove site links with no matching quest
