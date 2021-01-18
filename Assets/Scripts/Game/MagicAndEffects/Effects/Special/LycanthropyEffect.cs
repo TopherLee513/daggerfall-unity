@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -34,12 +34,13 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
         public const string LycanthropyCurseKey = "Lycanthropy-Curse";
 
-        const string generalTextDatabase = "GeneralText";
         const string cureQuestName = "$CUREWER";
         const int paperDollWidth = 110;
         const int paperDollHeight = 184;
-        const int needToKillHealthLimit = 4;
+        const int needToKillHealthLimitMinimum = 4;
         const int needToKillNotifySeconds = 120;
+        const int needToKillPeriod = DaggerfallDateTime.MinutesPerDay * DaggerfallDateTime.DaysPerMonth;
+        const float needToKillHealthLossPerMinute = 24.0f / DaggerfallDateTime.MinutesPerDay;
 
         RaceTemplate compoundRace;
         LycanthropyTypes infectionType = LycanthropyTypes.None;
@@ -70,6 +71,11 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         #endregion
 
         #region Properties
+
+        private uint TimeSinceLastInnocentKilled
+        {
+            get { return DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime() - lastKilledInnocent; }
+        }
 
         public LycanthropyTypes InfectionType
         {
@@ -154,6 +160,25 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
             // Our transformation is complete - cure everything on player (including stage one disease)
             GameManager.Instance.PlayerEffectManager.CureAll();
+
+            // Refresh head texture after effect starts
+            DaggerfallUI.RefreshLargeHUDHeadTexture();
+        }
+
+        public override void Resume(EntityEffectManager.EffectSaveData_v1 effectData, EntityEffectManager manager, DaggerfallEntityBehaviour caster = null)
+        {
+            base.Resume(effectData, manager, caster);
+
+            // Refresh head texture after effect resumes
+            DaggerfallUI.RefreshLargeHUDHeadTexture();
+        }
+
+        public override void End()
+        {
+            base.End();
+
+            // Refresh head texture after effect ends
+            DaggerfallUI.RefreshLargeHUDHeadTexture();
         }
 
         public override void ConstantEffect()
@@ -203,7 +228,13 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                 }
 
                 // Limit maximum health
-                GameManager.Instance.PlayerEntity.SetMaxHealthLimiter(needToKillHealthLimit);
+                // This gradually decreases max health over time until a limit is reached
+                uint urgeDuration = TimeSinceLastInnocentKilled - needToKillPeriod;
+                int reduction = Mathf.RoundToInt(urgeDuration * needToKillHealthLossPerMinute);
+                int healthLimit = GameManager.Instance.PlayerEntity.RawMaxHealth - reduction;
+                if (healthLimit < needToKillHealthLimitMinimum)
+                    healthLimit = needToKillHealthLimitMinimum;
+                GameManager.Instance.PlayerEntity.SetMaxHealthLimiter(healthLimit);
             }
 
             // Copy transformed state to player entity - used as a hostile condition by mobile NPCs
@@ -267,6 +298,34 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             }
 
             textureOut = backgroundTexture;
+            return true;
+        }
+
+        public override bool GetCustomHeadImageData(PlayerEntity playerEntity, out ImageData imageDataOut)
+        {
+            const string boarHead = "WERE00I0.IMG";
+            const string wolfHead = "WERE01I0.IMG";
+
+            // Use standard head if not transformed
+            imageDataOut = new ImageData();
+            if (!isTransformed)
+                return false;
+
+            // Select head based on lycanthropy type
+            string filename;
+            switch (infectionType)
+            {
+                case LycanthropyTypes.Werewolf:
+                    filename = wolfHead;
+                    break;
+                case LycanthropyTypes.Wereboar:
+                    filename = boarHead;
+                    break;
+                default:
+                    return false;
+            }
+
+            imageDataOut = ImageReader.GetImageData(filename, 0, 0, true);
             return true;
         }
 
@@ -351,7 +410,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         {
             if (isTransformed)
             {
-                suppressInventoryMessage = TextManager.Instance.GetText(generalTextDatabase, "inventoryWhileShapechanged");
+                suppressInventoryMessage = TextManager.Instance.GetLocalizedText("inventoryWhileShapechanged");
                 return true;
             }
             else
@@ -365,7 +424,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         {
             if (isTransformed)
             {
-                suppressTalkMessage = TextManager.Instance.GetText(generalTextDatabase, "youGetNoResponse");
+                suppressTalkMessage = TextManager.Instance.GetLocalizedText("youGetNoResponse");
                 return true;
             }
             else
@@ -388,7 +447,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                     return;
 
                 // Start the cure quest
-                QuestMachine.Instance.InstantiateQuest(cureQuestName);
+                QuestMachine.Instance.StartQuest(cureQuestName);
             }
         }
 
@@ -401,10 +460,12 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         /// </summary>
         public void UpdateSatiation()
         {
-            // Store time sated and reset need to kill timer to 0 so player is notified immediately next time
-            lastKilledInnocent = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime();
-            urgeToKillRising = false;
+            // Store time sated
+            lastKilledInnocent = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime();  
+
+            // Reset need to kill timer to 0 so player is notified immediately next time
             needToKillNotifyTimer = 0;
+            urgeToKillRising = false;
         }
 
         /// <summary>
@@ -437,7 +498,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                 // Player can always cast to exit beast form or with no restrictions while wearing Hircine's Ring
                 if (!CanCastMorphSelf() && !forceMorph)
                 {
-                    string canOnlyCastOncePerDay = TextManager.Instance.GetText(generalTextDatabase, "canOnlyCastOncePerDay");
+                    string canOnlyCastOncePerDay = TextManager.Instance.GetLocalizedText("canOnlyCastOncePerDay");
                     DaggerfallUI.MessageBox(canOnlyCastOncePerDay);
                     return;
                 }
@@ -450,9 +511,9 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
                 // Set race name based on infection type
                 if (infectionType == LycanthropyTypes.Werewolf)
-                    compoundRace.Name = TextManager.Instance.GetText(racesTextDatabase, "werewolf");
+                    compoundRace.Name = TextManager.Instance.GetLocalizedText("werewolf");
                 else if (infectionType == LycanthropyTypes.Wereboar)
-                    compoundRace.Name = TextManager.Instance.GetText(racesTextDatabase, "wereboar");
+                    compoundRace.Name = TextManager.Instance.GetLocalizedText("wereboar");
                 else
                     compoundRace.Name = GameManager.Instance.PlayerEntity.BirthRaceTemplate.Name;
 
@@ -474,6 +535,9 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
             // Store time whenever cast
             lastCastMorphSelf = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime();
+
+            // Refresh head texture after transform
+            DaggerfallUI.RefreshLargeHUDHeadTexture();
         }
 
         #endregion
@@ -516,6 +580,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             SetSkillMod(DFCareer.Skills.CriticalStrike, skillModAmount);
             SetSkillMod(DFCareer.Skills.Climbing, skillModAmount);
             SetSkillMod(DFCareer.Skills.HandToHand, skillModAmount);
+            SetSkillMod(DFCareer.Skills.Jumping, skillModAmount);
         }
 
         void InitMoveSoundTimer(float minTime = 4, float maxTime = 20)
@@ -553,7 +618,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             // Ultimately the player has their own choice to do this or not. They can run free in the wilderness for 24 hours if they prefer.
             if (isFullMoon && !isTransformed)
             {
-                string youDreamOfTheMoon = TextManager.Instance.GetText(generalTextDatabase, "youDreamOfTheMoon");
+                string youDreamOfTheMoon = TextManager.Instance.GetLocalizedText("youDreamOfTheMoon");
                 DaggerfallUI.AddHUDText(youDreamOfTheMoon, 2);
                 MorphSelf(true);
             }
@@ -561,7 +626,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
         bool GetNeedToKill()
         {
-            return !wearingHircineRing && DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime() - lastKilledInnocent > DaggerfallDateTime.MinutesPerDay * DaggerfallDateTime.DaysPerMonth;
+            return !wearingHircineRing && TimeSinceLastInnocentKilled > needToKillPeriod;
         }
 
         bool CanCastMorphSelf()
@@ -571,7 +636,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
         void NotifyNeedToKill()
         {
-            string youNeedToKill = TextManager.Instance.GetText(generalTextDatabase, "youNeedToHuntTheInnocent");
+            string youNeedToKill = TextManager.Instance.GetLocalizedText("youNeedToHuntTheInnocent");
             DaggerfallUI.AddHUDText(youNeedToKill, 2);
         }
 

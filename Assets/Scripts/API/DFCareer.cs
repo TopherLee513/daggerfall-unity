@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -233,6 +233,19 @@ namespace DaggerfallConnect
             Resistant,
             LowTolerance,
             CriticalWeakness,
+        }
+
+        /// <summary>
+        /// Tolerance level expressed as flags for saving throws.
+        /// </summary>
+        [Flags]
+        public enum ToleranceFlags
+        {
+            Normal = 0,
+            Immune = 1,
+            Resistant = 2,
+            LowTolerance = 4,
+            CriticalWeakness = 8,
         }
 
         /// <summary>

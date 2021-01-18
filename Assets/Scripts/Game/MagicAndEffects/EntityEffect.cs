@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -12,6 +12,7 @@
 using UnityEngine;
 using DaggerfallConnect;
 using DaggerfallConnect.FallExe;
+using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game.Formulas;
@@ -55,6 +56,26 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         /// Gets key from properties.
         /// </summary>
         string Key { get; }
+
+        /// <summary>
+        /// Group display name (used by crafting stations).
+        /// </summary>
+        string GroupName { get; }
+
+        /// <summary>
+        /// SubGroup display name (used by crafting stations).
+        /// </summary>
+        string SubGroupName { get; }
+
+        /// <summary>
+        /// Description for spellmaker.
+        /// </summary>
+        TextFile.Token[] SpellMakerDescription { get; }
+
+        /// <summary>
+        /// Description for spellbook.
+        /// </summary>
+        TextFile.Token[] SpellBookDescription { get; }
 
         /// <summary>
         /// Gets display name from properties or construct one from Group+SubGroup text in properties.
@@ -233,8 +254,6 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
     {
         #region Fields
 
-        protected const string textDatabase = "ClassicEffects";
-
         protected EffectProperties properties = new EffectProperties();
         protected EffectSettings settings = new EffectSettings();
         protected PotionProperties potionProperties = new PotionProperties();
@@ -273,8 +292,6 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         protected BaseEntityEffect()
         {
             // Set default properties
-            properties.GroupName = string.Empty;
-            properties.SubGroupName = string.Empty;
             properties.ShowSpellIcon = true;
             properties.SupportDuration = false;
             properties.SupportChance = false;
@@ -355,9 +372,29 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             get { return Properties.Key; }
         }
 
-        public string DisplayName
+        public virtual string GroupName
+        {
+            get { return string.Empty; }
+        }
+
+        public virtual string SubGroupName
+        {
+            get { return string.Empty; }
+        }
+
+        public virtual string DisplayName
         {
             get { return GetDisplayName(); }
+        }
+
+        public virtual TextFile.Token[] SpellMakerDescription
+        {
+            get { return null; }
+        }
+
+        public virtual TextFile.Token[] SpellBookDescription
+        {
+            get { return null; }
         }
 
         public LiveEffectBundle ParentBundle
@@ -618,6 +655,19 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         }
 
         /// <summary>
+        /// Cure all attribute damage by this effect.
+        /// </summary>
+        public virtual void CureAttributeDamage()
+        {
+            for (int i = 0; i < DaggerfallStats.Count; i++)
+            {
+                int amount = GetAttributeMod((DFCareer.Stats)i);
+                if (amount < 0)
+                    HealAttributeDamage((DFCareer.Stats)i, Mathf.Abs(amount));
+            }
+        }
+
+        /// <summary>
         /// Heal skill damage by amount.
         /// Does nothing if this effect does not damage skills.
         /// Skill will not heal past 0.
@@ -638,6 +688,19 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
 
             SetSkillMod(skill, result);
             Debug.LogFormat("Healed {0}'s {1} by {2} points", GetPeeredEntityBehaviour(manager).name, skill.ToString(), amount);
+        }
+
+        /// <summary>
+        /// Cure all skill damage by this effect.
+        /// </summary>
+        public virtual void CureSkillDamage()
+        {
+            for (int i = 0; i < DaggerfallSkills.Count; i++)
+            {
+                int amount = GetSkillMod((DFCareer.Skills)i);
+                if (amount < 0)
+                    HealSkillDamage((DFCareer.Skills)i, Mathf.Abs(amount));
+            }
         }
 
         /// <summary>
@@ -667,7 +730,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                     return false;
             }
 
-            return false;
+            return true;
         }
 
         /// <summary>
@@ -713,7 +776,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         protected int GetMagnitude(DaggerfallEntityBehaviour caster = null)
         {
             if (caster == null)
-                Debug.LogWarningFormat("GetMagnitude() for {0} has no caster.", Properties.Key);
+                Debug.LogWarningFormat("GetMagnitude() for {0} has no caster. Using caster level 1 for magnitude.", Properties.Key);
 
             if (manager == null)
                 Debug.LogWarningFormat("GetMagnitude() for {0} has no parent manager.", Properties.Key);
@@ -728,8 +791,13 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                 magnitude = baseMagnitude + plusMagnitude * multiplier;
             }
 
+            int initialMagnitude = magnitude;
             if (ParentBundle.targetType != TargetTypes.CasterOnly)
                 magnitude = FormulaHelper.ModifyEffectAmount(this, manager.EntityBehaviour.Entity, magnitude);
+
+            // Output "Save versus spell made." when magnitude is fully reduced to 0 by saving throw
+            if (initialMagnitude > 0 && magnitude == 0)
+                DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("saveVersusSpellMade"));
 
             return magnitude;
         }
@@ -827,27 +895,29 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
 
         string GetDisplayName()
         {
-            // Get display name or manufacture a default from group names
-            if (!string.IsNullOrEmpty(Properties.DisplayName))
-            {
-                return Properties.DisplayName;
-            }
+            // Manufacture a default display name from group names
+            // Effects can override DisplayName property to set a custom display name
+            string groupName = GroupName;
+            string subGroupName = SubGroupName;
+            if (!string.IsNullOrEmpty(groupName) && !string.IsNullOrEmpty(subGroupName))
+                return string.Format("{0} {1}", groupName, subGroupName);
+            else if (!string.IsNullOrEmpty(groupName) && string.IsNullOrEmpty(subGroupName))
+                return groupName;
             else
-            {
-                if (!string.IsNullOrEmpty(Properties.GroupName) && !string.IsNullOrEmpty(Properties.SubGroupName))
-                    return properties.DisplayName = string.Format("{0} {1}", Properties.GroupName, Properties.SubGroupName);
-                else if (!string.IsNullOrEmpty(Properties.GroupName) && string.IsNullOrEmpty(Properties.SubGroupName))
-                    return properties.DisplayName = Properties.GroupName;
-                else
-                    return properties.DisplayName = TextManager.Instance.GetText("ClassicEffect", "noName");
-            }
+                return TextManager.Instance.GetLocalizedText("noName");
         }
 
         void SetDuration()
         {
             int casterLevel = (caster) ? caster.Entity.Level : 1;
             if (Properties.SupportDuration)
-                roundsRemaining = settings.DurationBase + settings.DurationPlus * (int)Mathf.Floor(casterLevel / settings.DurationPerLevel);
+            {
+                // Multiplier clamped at 1 or player can lose a round depending on spell settings and level
+                int durationPerLevelMultiplier = (int)Mathf.Floor(casterLevel / settings.DurationPerLevel);
+                if (durationPerLevelMultiplier < 1)
+                    durationPerLevelMultiplier = 1;
+                roundsRemaining = settings.DurationBase + settings.DurationPlus * durationPerLevelMultiplier;
+            }
             else
                 roundsRemaining = 0;
 

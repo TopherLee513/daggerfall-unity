@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -8,6 +8,8 @@
 // 
 // Notes:
 //
+
+//#define SEPARATE_DEV_PERSISTENT_PATH
 
 using UnityEngine;
 using System;
@@ -48,9 +50,23 @@ namespace DaggerfallWorkshop
         IniData defaultIniData = null;
         IniData userIniData = null;
 
+        string persistentPath = null;
+
         public string PersistentDataPath
         {
-            get { return Application.persistentDataPath; }
+            get
+            {
+                if (string.IsNullOrEmpty(persistentPath))
+                {
+#if UNITY_EDITOR && SEPARATE_DEV_PERSISTENT_PATH
+                    persistentPath = String.Concat(Application.persistentDataPath, ".devenv");
+                    Directory.CreateDirectory(persistentPath);
+#else
+                    persistentPath = Application.persistentDataPath;
+#endif
+                }
+                return persistentPath;
+            }
         }
 
         public SettingsManager()
@@ -63,30 +79,39 @@ namespace DaggerfallWorkshop
         // [Daggerfall]
         public string MyDaggerfallPath { get; set; }
         public string MyDaggerfallUnitySavePath { get; set; }
+        public string MyDaggerfallUnityScreenshotsPath { get; set; }
 
         // [Video]
         public int ResolutionWidth { get; set; }
         public int ResolutionHeight { get; set; }
         public int RetroRenderingMode { get; set; }
+        public int PostProcessingInRetroMode { get; set; }
         public bool UseMipMapsInRetroMode { get; set; }
+        public int PalettizationLUTShift { get; set; }
         public bool VSync { get; set; }
+        public int TargetFrameRate { get; set; }
         public bool Fullscreen { get; set; }
+        public bool ExclusiveFullscreen { get; set; }
         public int FieldOfView { get; set; }
         public int ShadowResolutionMode { get; set; }
         public int MainFilterMode { get; set; }
         public int QualityLevel { get; set; }
-        public bool UseLegacyDeferred { get; set; }
         public bool DungeonLightShadows { get; set; }
         public bool InteriorLightShadows { get; set; }
         public bool ExteriorLightShadows { get; set; }
+        public bool MobileNPCShadows { get; set; }
+        public bool GeneralBillboardShadows { get; set; }
         public float DungeonShadowDistance { get; set; }
         public float InteriorShadowDistance { get; set; }
         public float ExteriorShadowDistance { get; set; }
         public bool EnableTextureArrays { get; set; }
         public int RandomDungeonTextures { get; set; }
+        public int CursorWidth { get; set; }
+        public int CursorHeight { get; set; }
 
         // [Audio]
         public string SoundFont { get; set; }
+        public bool AlternateMusic { get; set; }
 
         // [ChildGuard]
         public bool PlayerNudity { get; set; }
@@ -110,6 +135,7 @@ namespace DaggerfallWorkshop
         public bool EnableInventoryInfoPanel { get; set; }
         public bool EnableEnhancedItemLists { get; set; }
         public bool EnableModernConversationStyleInTalkWindow { get; set; }
+        public string IconsPositioningScheme { get; set; }
         public int HelmAndShieldMaterialDisplay { get; set; }
         public bool AccelerateUICopyTexture { get; set; }
         public bool EnableVitalsIndicators { get; set; }
@@ -117,8 +143,16 @@ namespace DaggerfallWorkshop
         public bool EnableGeographicBackgrounds { get; set; }
         public bool EnableArrowCounter { get; set; }
         public bool DungeonExitWagonPrompt { get; set; }
+        public bool TravelMapLocationsOutline { get; set; }
         public bool IllegalRestWarning { get; set; }
-        public int LoiterLimitInHours { get; set; }
+        public bool LargeHUD { get; set; }
+        public bool LargeHUDDocked { get; set; }
+        public float LargeHUDUndockedScale { get; set; }
+        public int LargeHUDUndockedAlignment { get; set; }
+        public bool LargeHUDUndockedOffsetWeapon { get; set; }
+        public bool LargeHUDOffsetHorse { get; set; }
+        public bool CanDropQuestItems { get; set; }
+        public bool RunInBackground { get; set; }
 
         // [Spells]
         public bool EnableSpellLighting { get; set; }
@@ -128,11 +162,18 @@ namespace DaggerfallWorkshop
         public bool InvertMouseVertical { get; set; }
         public bool MouseLookSmoothing { get; set; }
         public float MouseLookSensitivity { get; set; }
+        public float JoystickLookSensitivity { get; set; }
+        public float JoystickCursorSensitivity { get; set; }
+        public float JoystickMovementThreshold { get; set; }
+        public float JoystickDeadzone { get; set; }
+        public bool EnableController { get; set; }
+
         public bool HeadBobbing { get; set; }
         public int Handedness { get; set; }
         public float WeaponAttackThreshold { get; set; }
         public float WeaponSensitivity { get; set; }
-        public float MoveSpeedAcceleration { get; set; }
+        public bool MovementAcceleration { get; set; }
+        public bool ToggleSneak { get; set; }
         public bool ClickToAttack { get; set; }
         public int CameraRecoilStrength { get; set; }
         public float MusicVolume { get; set; }
@@ -156,10 +197,9 @@ namespace DaggerfallWorkshop
 
         // [Experimental]
         public int TerrainDistance { get; set; }
-
         public float TerrainHeightmapPixelError { get; set; }
         public bool SmallerDungeons { get; set; }
-        public bool CustomBooksImport { get; set; }
+        public int AssetCacheThreshold { get; set; }
 
         // [Enhancements]
         public bool LypyL_GameConsole { get; set; }
@@ -177,6 +217,8 @@ namespace DaggerfallWorkshop
         public bool EnemyInfighting { get; set; }
         public bool EnhancedCombatAI { get; set; }
         public bool GuildQuestListBox { get; set; }
+        public bool BowLeftHandWithSwitching { get; set; }
+        public int LoiterLimitInHours { get; set; }
 
         #endregion
 
@@ -193,21 +235,28 @@ namespace DaggerfallWorkshop
             // Read ini data to property cache
             MyDaggerfallPath = GetString(sectionDaggerfall, "MyDaggerfallPath");
             MyDaggerfallUnitySavePath = GetString(sectionDaggerfall, "MyDaggerfallUnitySavePath");
+            MyDaggerfallUnityScreenshotsPath = GetString(sectionDaggerfall, "MyDaggerfallUnityScreenshotsPath");
 
             ResolutionWidth = GetInt(sectionVideo, "ResolutionWidth");
             ResolutionHeight = GetInt(sectionVideo, "ResolutionHeight");
             RetroRenderingMode = GetInt(sectionVideo, "RetroRenderingMode", 0, 2);
+            PostProcessingInRetroMode = GetInt(sectionVideo, "PostProcessingInRetroMode");
             UseMipMapsInRetroMode = GetBool(sectionVideo, "UseMipMapsInRetroMode");
+            PalettizationLUTShift = GetInt(sectionVideo, "PalettizationLUTShift");
             VSync = GetBool(sectionVideo, "VSync");
+            TargetFrameRate = GetInt(sectionVideo, "TargetFrameRate", 0, 300);
             Fullscreen = GetBool(sectionVideo, "Fullscreen");
+            ExclusiveFullscreen = GetBool(sectionVideo, "ExclusiveFullscreen");
+            RunInBackground = GetBool(sectionVideo, "RunInBackground");
             FieldOfView = GetInt(sectionVideo, "FieldOfView", 60, 80);
             MainFilterMode = GetInt(sectionVideo, "MainFilterMode", 0, 2);
             ShadowResolutionMode = GetInt(sectionVideo, "ShadowResolutionMode", 0, 3);
             QualityLevel = GetInt(sectionVideo, "QualityLevel", 0, 5);
-            UseLegacyDeferred = GetBool(sectionVideo, "UseLegacyDeferred");
             DungeonLightShadows = GetBool(sectionVideo, "DungeonLightShadows");
             InteriorLightShadows = GetBool(sectionVideo, "InteriorLightShadows");
             ExteriorLightShadows = GetBool(sectionVideo, "ExteriorLightShadows");
+            MobileNPCShadows = GetBool(sectionVideo, "MobileNPCShadows");
+            GeneralBillboardShadows = GetBool(sectionVideo, "GeneralBillboardShadows");
             DungeonShadowDistance = GetFloat(sectionVideo, "DungeonShadowDistance", 0.1f, 50.0f);
             InteriorShadowDistance = GetFloat(sectionVideo, "InteriorShadowDistance", 0.1f, 50.0f);
             ExteriorShadowDistance = GetFloat(sectionVideo, "ExteriorShadowDistance", 0.1f, 150.0f);
@@ -215,6 +264,7 @@ namespace DaggerfallWorkshop
             RandomDungeonTextures = GetInt(sectionVideo, "RandomDungeonTextures", 0, 4);
 
             SoundFont = GetString(sectionAudio, "SoundFont");
+            AlternateMusic = GetBool(sectionAudio, "AlternateMusic");
 
             PlayerNudity = GetBool(sectionChildGuard, "PlayerNudity");
 
@@ -233,6 +283,7 @@ namespace DaggerfallWorkshop
             EnableInventoryInfoPanel = GetBool(sectionGUI, "EnableInventoryInfoPanel");
             EnableEnhancedItemLists = GetBool(sectionGUI, "EnableEnhancedItemLists");
             EnableModernConversationStyleInTalkWindow = GetBool(sectionGUI, "EnableModernConversationStyleInTalkWindow");
+            IconsPositioningScheme = GetString(sectionGUI, "IconsPositioningScheme");
             HelmAndShieldMaterialDisplay = GetInt(sectionGUI, "HelmAndShieldMaterialDisplay", 0, 3);            
             ShopQualityPresentation = GetInt(sectionGUI, "ShopQualityPresentation", 0, 2);
             ShopQualityHUDDelay = GetInt(sectionGUI, "ShopQualityHUDDelay", 1, 10);
@@ -243,8 +294,15 @@ namespace DaggerfallWorkshop
             EnableGeographicBackgrounds = GetBool(sectionGUI, "EnableGeographicBackgrounds");
             EnableArrowCounter = GetBool(sectionGUI, "EnableArrowCounter");
             DungeonExitWagonPrompt = GetBool(sectionGUI, "DungeonExitWagonPrompt");
+            TravelMapLocationsOutline = GetBool(sectionGUI, "TravelMapLocationsOutline");
             IllegalRestWarning = GetBool(sectionGUI, "IllegalRestWarning");
-            LoiterLimitInHours = GetInt(sectionGUI, "LoiterLimitInHours");
+            LargeHUD = GetBool(sectionGUI, "LargeHUD");
+            LargeHUDDocked = GetBool(sectionGUI, "LargeHUDDocked");
+            LargeHUDUndockedScale = GetFloat(sectionGUI, "LargeHUDUndockedScale", 0.25f, 2.0f);
+            LargeHUDUndockedAlignment = GetInt(sectionGUI, "LargeHUDUndockedAlignment", 0, 3);
+            LargeHUDUndockedOffsetWeapon = GetBool(sectionGUI, "LargeHUDUndockedOffsetWeapon");
+            LargeHUDOffsetHorse = GetBool(sectionGUI, "LargeHUDOffsetHorse");
+            CanDropQuestItems = GetBool(sectionGUI, "CanDropQuestItems");
 
             EnableSpellLighting = GetBool(sectionSpells, "EnableSpellLighting");
             EnableSpellShadows = GetBool(sectionSpells, "EnableSpellShadows");
@@ -252,7 +310,13 @@ namespace DaggerfallWorkshop
             InvertMouseVertical = GetBool(sectionControls, "InvertMouseVertical");
             MouseLookSmoothing = GetBool(sectionControls, "MouseLookSmoothing");
             MouseLookSensitivity = GetFloat(sectionControls, "MouseLookSensitivity", 0.1f, 8.0f);
-            MoveSpeedAcceleration = GetFloat(sectionControls, "MoveSpeedAcceleration", InputManager.minAcceleration, InputManager.maxAcceleration);
+            JoystickLookSensitivity = GetFloat(sectionControls, "JoystickLookSensitivity", 0.1f, 4.0f);
+            JoystickCursorSensitivity = GetFloat(sectionControls, "JoystickCursorSensitivity", 0.1f, 5.0f);
+            JoystickMovementThreshold = GetFloat(sectionControls, "JoystickMovementThreshold", 0.0f, 1.0f);
+            MovementAcceleration = GetBool(sectionControls, "MovementAcceleration");
+            JoystickDeadzone = GetFloat(sectionControls, "JoystickDeadzone", 0.001f, 1.0f);
+            EnableController = GetBool(sectionControls, "EnableController");
+            ToggleSneak = GetBool(sectionControls, "ToggleSneak");
             HeadBobbing = GetBool(sectionControls, "HeadBobbing");
             Handedness = GetInt(sectionControls, "Handedness", 0, 3);
             WeaponAttackThreshold = GetFloat(sectionControls, "WeaponAttackThreshold", 0.001f, 1.0f);
@@ -279,7 +343,7 @@ namespace DaggerfallWorkshop
             TerrainDistance = GetInt(sectionExperimental, "TerrainDistance", 1, 4);
             TerrainHeightmapPixelError = GetFloat(sectionExperimental, "TerrainHeightmapPixelError", 1, 10);
             SmallerDungeons = GetBool(sectionExperimental, "SmallerDungeons");
-            CustomBooksImport = GetBool(sectionExperimental, "CustomBooksImport");
+            AssetCacheThreshold = GetInt(sectionExperimental, "AssetCacheThreshold", 0, 120);
 
             LypyL_GameConsole = GetBool(sectionEnhancements, "LypyL_GameConsole");
             LypyL_ModSystem = GetBool(sectionEnhancements, "LypyL_ModSystem");
@@ -296,6 +360,8 @@ namespace DaggerfallWorkshop
             EnemyInfighting = GetBool(sectionEnhancements, "EnemyInfighting");
             EnhancedCombatAI = GetBool(sectionEnhancements, "EnhancedCombatAI");
             GuildQuestListBox = GetBool(sectionEnhancements, "GuildQuestListBox");
+            BowLeftHandWithSwitching = GetBool(sectionEnhancements, "BowLeftHandWithSwitching");
+            LoiterLimitInHours = GetInt(sectionEnhancements, "LoiterLimitInHours");
         }
 
         /// <summary>
@@ -306,21 +372,28 @@ namespace DaggerfallWorkshop
             // Write property cache to ini data
             SetString(sectionDaggerfall, "MyDaggerfallPath", MyDaggerfallPath);
             SetString(sectionDaggerfall, "MyDaggerfallUnitySavePath", MyDaggerfallUnitySavePath);
+            SetString(sectionDaggerfall, "MyDaggerfallUnityScreenshotsPath", MyDaggerfallUnityScreenshotsPath);
 
             SetInt(sectionVideo, "ResolutionWidth", ResolutionWidth);
             SetInt(sectionVideo, "ResolutionHeight", ResolutionHeight);
             SetInt(sectionVideo, "RetroRenderingMode", RetroRenderingMode);
+            SetInt(sectionVideo, "PostProcessingInRetroMode", PostProcessingInRetroMode);
             SetBool(sectionVideo, "UseMipMapsInRetroMode", UseMipMapsInRetroMode);
+            SetInt(sectionVideo, "PalettizationLUTShift", PalettizationLUTShift);
             SetBool(sectionVideo, "VSync", VSync);
+            SetInt(sectionVideo, "TargetFrameRate", TargetFrameRate);
             SetBool(sectionVideo, "Fullscreen", Fullscreen);
+            SetBool(sectionVideo, "ExclusiveFullscreen", ExclusiveFullscreen);
+            SetBool(sectionVideo, "RunInBackground", RunInBackground);
             SetInt(sectionVideo, "FieldOfView", FieldOfView);
             SetInt(sectionVideo, "MainFilterMode", MainFilterMode);
             SetInt(sectionVideo, "ShadowResolutionMode", ShadowResolutionMode);
             SetInt(sectionVideo, "QualityLevel", QualityLevel);
-            SetBool(sectionVideo, "UseLegacyDeferred", UseLegacyDeferred);
             SetBool(sectionVideo, "DungeonLightShadows", DungeonLightShadows);
             SetBool(sectionVideo, "InteriorLightShadows", InteriorLightShadows);
             SetBool(sectionVideo, "ExteriorLightShadows", ExteriorLightShadows);
+            SetBool(sectionVideo, "MobileNPCShadows", MobileNPCShadows);
+            SetBool(sectionVideo, "GeneralBillboardShadows", GeneralBillboardShadows);
             SetFloat(sectionVideo, "DungeonShadowDistance", DungeonShadowDistance);
             SetFloat(sectionVideo, "InteriorShadowDistance", InteriorShadowDistance);
             SetFloat(sectionVideo, "ExteriorShadowDistance", ExteriorShadowDistance);
@@ -328,6 +401,7 @@ namespace DaggerfallWorkshop
             SetInt(sectionVideo, "RandomDungeonTextures", RandomDungeonTextures);
 
             SetString(sectionAudio, "SoundFont", SoundFont);
+            SetBool(sectionAudio, "AlternateMusic", AlternateMusic);
 
             SetBool(sectionChildGuard, "PlayerNudity", PlayerNudity);
 
@@ -346,6 +420,7 @@ namespace DaggerfallWorkshop
             SetBool(sectionGUI, "EnableInventoryInfoPanel", EnableInventoryInfoPanel);
             SetBool(sectionGUI, "EnableEnhancedItemLists", EnableEnhancedItemLists);
             SetBool(sectionGUI, "EnableModernConversationStyleInTalkWindow", EnableModernConversationStyleInTalkWindow);
+            SetString(sectionGUI, "IconsPositioningScheme", IconsPositioningScheme);
             SetInt(sectionGUI, "HelmAndShieldMaterialDisplay", HelmAndShieldMaterialDisplay);
             SetInt(sectionGUI, "AutomapNumberOfDungeons", AutomapNumberOfDungeons);
             SetInt(sectionGUI, "ShopQualityPresentation", ShopQualityPresentation);
@@ -357,9 +432,15 @@ namespace DaggerfallWorkshop
             SetBool(sectionGUI, "EnableGeographicBackgrounds", EnableGeographicBackgrounds);
             SetBool(sectionGUI, "EnableArrowCounter", EnableArrowCounter);
             SetBool(sectionGUI, "DungeonExitWagonPrompt", DungeonExitWagonPrompt);
+            SetBool(sectionGUI, "TravelMapLocationsOutline", TravelMapLocationsOutline);
             SetBool(sectionGUI, "IllegalRestWarning", IllegalRestWarning);
-            SetInt(sectionGUI, "LoiterLimitInHours", LoiterLimitInHours);
-
+            SetBool(sectionGUI, "LargeHUD", LargeHUD);
+            SetBool(sectionGUI, "LargeHUDDocked", LargeHUDDocked);
+            SetFloat(sectionGUI, "LargeHUDUndockedScale", LargeHUDUndockedScale);
+            SetInt(sectionGUI, "LargeHUDUndockedAlignment", LargeHUDUndockedAlignment);
+            SetBool(sectionGUI, "LargeHUDUndockedOffsetWeapon", LargeHUDUndockedOffsetWeapon);
+            SetBool(sectionGUI, "LargeHUDOffsetHorse", LargeHUDOffsetHorse);
+            SetBool(sectionGUI, "CanDropQuestItems", CanDropQuestItems);
 
             SetBool(sectionSpells, "EnableSpellLighting", EnableSpellLighting);
             SetBool(sectionSpells, "EnableSpellShadows", EnableSpellShadows);
@@ -367,7 +448,13 @@ namespace DaggerfallWorkshop
             SetBool(sectionControls, "InvertMouseVertical", InvertMouseVertical);
             SetBool(sectionControls, "MouseLookSmoothing", MouseLookSmoothing);
             SetFloat(sectionControls, "MouseLookSensitivity", MouseLookSensitivity);
-            SetFloat(sectionControls, "MoveSpeedAcceleration", MoveSpeedAcceleration);
+            SetFloat(sectionControls, "JoystickLookSensitivity", JoystickLookSensitivity);
+            SetFloat(sectionControls, "JoystickCursorSensitivity", JoystickCursorSensitivity);
+            SetFloat(sectionControls, "JoystickMovementThreshold", JoystickMovementThreshold);
+            SetBool(sectionControls, "MovementAcceleration", MovementAcceleration);
+            SetFloat(sectionControls, "JoystickDeadzone", JoystickDeadzone);
+            SetBool(sectionControls, "EnableController", EnableController);
+            SetBool(sectionControls, "ToggleSneak", ToggleSneak);
             SetBool(sectionControls, "HeadBobbing", HeadBobbing);
             SetInt(sectionControls, "Handedness", Handedness);
             SetFloat(sectionControls, "WeaponAttackThreshold", WeaponAttackThreshold);
@@ -387,7 +474,7 @@ namespace DaggerfallWorkshop
             SetInt(sectionExperimental, "TerrainDistance", TerrainDistance);
             SetFloat(sectionExperimental, "TerrainHeightmapPixelError", TerrainHeightmapPixelError);
             SetBool(sectionExperimental, "SmallerDungeons", SmallerDungeons);
-            SetBool(sectionExperimental, "CustomBooksImport", CustomBooksImport);
+            SetInt(sectionExperimental, "AssetCacheThreshold", AssetCacheThreshold);
 
             SetBool(sectionEnhancements, "LypyL_GameConsole", LypyL_GameConsole);
             SetBool(sectionEnhancements, "LypyL_ModSystem", LypyL_ModSystem);
@@ -404,6 +491,8 @@ namespace DaggerfallWorkshop
             SetBool(sectionEnhancements, "EnemyInfighting", EnemyInfighting);
             SetBool(sectionEnhancements, "EnhancedCombatAI", EnhancedCombatAI);
             SetBool(sectionEnhancements, "GuildQuestListBox", GuildQuestListBox);
+            SetBool(sectionEnhancements, "BowLeftHandWithSwitching", BowLeftHandWithSwitching);
+            SetInt(sectionEnhancements, "LoiterLimitInHours", LoiterLimitInHours);
 
             // Write settings to persistent file
             WriteSettingsFile();
@@ -424,7 +513,7 @@ namespace DaggerfallWorkshop
 
             // Must have settings.ini in persistent data path
             string message;
-            string userIniPath = Path.Combine(Application.persistentDataPath, settingsIniName);
+            string userIniPath = Path.Combine(PersistentDataPath, settingsIniName);
             if (!File.Exists(userIniPath))
             {
                 // Create file
@@ -450,7 +539,7 @@ namespace DaggerfallWorkshop
             {
                 try
                 {
-                    string path = Path.Combine(Application.persistentDataPath, settingsIniName);
+                    string path = Path.Combine(PersistentDataPath, settingsIniName);
                     if (File.Exists(path))
                     {
                         iniParser.WriteFile(path, userIniData);
@@ -508,7 +597,15 @@ namespace DaggerfallWorkshop
 
         bool GetBool(string sectionName, string valueName)
         {
-            return bool.Parse(GetData(sectionName, valueName));
+            try
+            {
+                return bool.Parse(GetData(sectionName, valueName));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarningFormat("GetBool() could not read value [{0}]{1}. Returning False. The exception was '{2}'.", sectionName, valueName, ex.Message);
+                return false;
+            }
         }
 
         void SetBool(string sectionName, string valueName, bool value)
@@ -518,13 +615,29 @@ namespace DaggerfallWorkshop
 
         int GetInt(string sectionName, string valueName)
         {
-            return int.Parse(GetData(sectionName, valueName));
+            try
+            {
+                return int.Parse(GetData(sectionName, valueName));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarningFormat("GetInt() could not read value [{0}]{1}. Returning 0. The exception was '{2}'.", sectionName, valueName, ex.Message);
+                return 0;
+            }
         }
 
         int GetInt(string sectionName, string valueName, int min, int max)
         {
-            int value = int.Parse(GetData(sectionName, valueName));
-            return Mathf.Clamp(value, min, max);
+            try
+            {
+                int value = int.Parse(GetData(sectionName, valueName));
+                return Mathf.Clamp(value, min, max);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarningFormat("GetInt() could not read value [{0}]{1}. Returning {2}. The exception was '{3}'.", sectionName, valueName, min, ex.Message);
+                return min;
+            }
         }
 
         void SetInt(string sectionName, string valueName, int value)
@@ -534,13 +647,29 @@ namespace DaggerfallWorkshop
 
         float GetFloat(string sectionName, string valueName)
         {
-            return float.Parse(GetData(sectionName, valueName), NumberStyles.Float, CultureInfo.InvariantCulture);
+            try
+            {
+                return float.Parse(GetData(sectionName, valueName), NumberStyles.Float, CultureInfo.InvariantCulture);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarningFormat("GetFloat() could not read value [{0}]{1}. Returning 0. The exception was '{2}'.", sectionName, valueName, ex.Message);
+                return 0;
+            }
         }
 
         float GetFloat(string sectionName, string valueName, float min, float max)
         {
-            float value = float.Parse(GetData(sectionName, valueName), NumberStyles.Float, CultureInfo.InvariantCulture);
-            return Mathf.Clamp(value, min, max);
+            try
+            {
+                float value = float.Parse(GetData(sectionName, valueName), NumberStyles.Float, CultureInfo.InvariantCulture);
+                return Mathf.Clamp(value, min, max);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarningFormat("GetFloat() could not read value [{0}]{1}. Returning {2}. The exception was '{3}'.", sectionName, valueName, min, ex.Message);
+                return min;
+            }
         }
 
         void SetFloat(string sectionName, string valueName, float value)
@@ -556,8 +685,9 @@ namespace DaggerfallWorkshop
                 Color result = StringToColor(colorStr);
                 return result;
             }
-            catch
+            catch (Exception ex)
             {
+                Debug.LogWarningFormat("GetColor() could not read value [{0}]{1}. Returning {2}. The exception was '{3}'.", sectionName, valueName, defaultColor, ex.Message);
                 return defaultColor;
             }
         }

@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -44,16 +44,32 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
 
         #region Properties
 
+        /// <summary>
+        /// Generates the scale for a <see cref="TreeInstance"/> where <c>1</c> is the reference value;
+        /// should return a different value each time for variety.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">This callback must not be set to null.</exception>
         public static Func<float> GetTreeScaleCallback
         {
             set { SetCallback(ref getTreeScaleCallback, value); }
         }
 
+        /// <summary>
+        /// Generates the color for a <see cref="TreeInstance"/>;
+        /// should return a different value each time for variety.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">This callback must not be set to null.</exception>
         public static Func<Color32> GetTreeColorCallback
         {
             set { SetCallback(ref getTreeColorCallback, value); }
         }
 
+        /// <summary>
+        /// Customizes terrain settings, such as tree distance or lod, before instantiating trees.
+        /// Note that many settings only affect objects of type <see cref="Tree"/> created with the
+        /// Unity Tree Editor and not other solutions like SpeedTree.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">This callback must not be set to null.</exception>
         public static Action<Terrain> SetTreesSettingsCallback
         {
             set { SetCallback(ref setTreesSettingsCallback, value); }
@@ -63,6 +79,9 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
 
         #region Public Methods
 
+        /// <summary>
+        /// Clears records of import attempts for assets from loose files and mods.
+        /// </summary>
         public static void RetryAssetImports()
         {
             triedBillboards.Clear();
@@ -82,14 +101,22 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             if (!TryImportGameObject(modelID, true, out go))
                 return null;
 
-            go.name = string.Format("DaggerfallMesh[Replacement][ID ={0}]", modelID);
+            go.name = GameObjectHelper.GetGoModelName(modelID) + " [Replacement]";
             go.transform.parent = parent;
             go.transform.position = matrix.GetColumn(3);
-            go.transform.rotation = GameObjectHelper.QuaternionFromMatrix(matrix);
+            go.transform.rotation = matrix.rotation;
+
+            //Multiply the scale instead of applying it, since custom 3D models doesn't necessary have (1,1,1) scale
+            go.transform.localScale = Vector3.Scale(go.transform.localScale, matrix.lossyScale);
 
             // Finalise gameobject
             FinaliseMaterials(go);
             return go;
+        }
+
+        public static string GetFlatReplacementName (int archive, int record)
+        {
+            return string.Format("DaggerfallBillboard [TEXTURE.{0:000}, Index={1}] [Replacement]", archive, record);
         }
 
         /// <summary>
@@ -107,7 +134,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             if (!TryImportGameObject(archive, record, true, out go))
                 return null;
 
-            go.name = string.Format("DaggerfallBillboard [Replacement] [TEXTURE.{0:000}, Index={1}]", archive, record);
+            go.name = GetFlatReplacementName(archive, record);
             go.transform.parent = parent;
 
             // Assign position
@@ -136,7 +163,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
         /// <summary>
         /// Ensures that the requested imported model is assigned to the given transform and is positioned correctly.
         /// If archive and record mismatch, the requested prefab is imported while currently loaded gameobject is destroyed.
-        /// This has a similar purpose to <see cref="DaggerfallBillboard.SetMaterial()"/>.
+        /// This has a similar purpose to <see cref="DaggerfallBillboard.SetMaterial(int, int, int)"/>.
         /// </summary>
         /// <param name="archive">Texture archive for original billboard.</param>
         /// <param name="record">Texture record for original billboard.</param>
@@ -148,13 +175,13 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
         {
             GameObject go = null;
 
-            string name = string.Format("DaggerfallBillboard [Replacement] [TEXTURE.{0:000}, Index={1}]", archive, record);
+            string name = GetFlatReplacementName(archive, record);
             for (int i = 0; i < parent.childCount; i++)
             {
                 Transform transform = parent.GetChild(i);
                 if (transform.name == name)
                     AlignToBase((go = transform.gameObject).transform, position, archive, record, inDungeon);
-                else if (transform.name.StartsWith("DaggerfallBillboard [Replacement]"))
+                else if (transform.name.EndsWith(" [Replacement]"))
                     GameObject.Destroy(transform.gameObject);
             }
 
@@ -178,6 +205,9 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             if (!TryImportGameObject(archive, record, false, out prefab))
                 return false;
 
+            // Store state of random sequence
+            Random.State prevState = Random.state;
+
             // Get instance properties
             Vector3 position = new Vector3(x / (float)tilemapDim, 0.0f, y / (float)tilemapDim);
             float scale = getTreeScaleCallback();
@@ -198,6 +228,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             };
             terrain.AddTreeInstance(treeInstance);
 
+            Random.state = prevState;   // Restore random state
             return true;
         }
 
@@ -358,6 +389,9 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             // Check object and all children
             foreach (var meshRenderer in go.GetComponentsInChildren<MeshRenderer>())
             {
+                if (meshRenderer.gameObject.GetComponent<RuntimeMaterials>())
+                    continue;
+
                 // Check all materials
                 Material[] materials = meshRenderer.sharedMaterials;
                 for (int i = 0; i < materials.Length; i++)

@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -47,11 +47,15 @@ namespace DaggerfallWorkshop.Game
         }
 
         /// <summary>
-        /// Moves the player on solid ground & floating platforms.
+        /// Moves the player on solid ground and floating platforms.
         /// </summary>
-        /// <param name="moveDirection">the vector the player should move to</param>
+        /// <param name="moveDirection">The vector the player should move to.</param>
         public void MoveWithMovingPlatform(Vector3 moveDirection)
         {
+            // Clear active platform if player just cancelled climbing
+            if (GameManager.Instance.ClimbingMotor.WasClimbing)
+                ClearActivePlatform();
+
             // Moving platform support
             if (activePlatform != null)
             {

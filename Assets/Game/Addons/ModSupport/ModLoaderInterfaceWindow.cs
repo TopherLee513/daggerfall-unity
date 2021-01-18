@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,6 +11,7 @@
 
 using UnityEngine;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using DaggerfallWorkshop.Game;
@@ -21,6 +22,14 @@ using DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings;
 
 public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
 {
+    private enum Stage
+    {
+        None,
+        Cleanup,
+        CheckDependencies,
+        Close
+    }
+
     struct ModSettings
     {
         public ModInfo modInfo;
@@ -61,9 +70,13 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
     readonly Color unselectedTextColor = new Color(0.6f, 0.6f, 0.6f, 1f);
     readonly Color selectedTextColor = new Color(0.0f, 0.8f, 0.0f, 1.0f);
     readonly Color textColor = new Color(0.0f, 0.5f, 0.0f, 0.4f);
+    readonly Color disabledModTextColor = new Color(0.35f, 0.35f, 0.35f, 1);
+    readonly Color disabledButtonBackground = new Color(0.35f, 0.35f, 0.35f, 0.4f);
+
+    Stage currentStage = Stage.None;
+    bool moveNextStage = false;
 
     int currentSelection = -1;
-
     ModSettings[] modSettings;
 
     #endregion
@@ -108,7 +121,6 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
         modList.SelectedShadowPosition = DaggerfallUI.DaggerfallDefaultShadowPos;
         modList.SelectedShadowColor = Color.black;
         modList.OnScroll += ModList_OnScroll;
-        modList.MaxCharacters = 20;
         ModListPanel.Components.Add(modList);
 
         modListScrollBar.Size = new Vector2(5, 115);
@@ -131,6 +143,7 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
         backButton.VerticalAlignment = VerticalAlignment.Top;
         backButton.HorizontalAlignment = HorizontalAlignment.Left;
         backButton.OnMouseClick +=  BackButton_OnMouseClick;
+        backButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GameSetupBackToOptions);
         ModListPanel.Components.Add(backButton);
 
         increaseLoadOrderButton.Size = new Vector2(40, 12);
@@ -228,6 +241,7 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
         refreshButton.Label.Text = ModManager.GetText("refresh");
         refreshButton.Label.ToolTipText = ModManager.GetText("RrefreshInfo");
         refreshButton.OnMouseClick += RefreshButton_OnMouseClick;
+        refreshButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GameSetupRefresh);
         ModPanel.Components.Add(refreshButton);
 
         saveAndCloseButton.Size = new Vector2(70, 12);
@@ -238,6 +252,7 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
         saveAndCloseButton.Label.Text = ModManager.GetText("saveClose");
         saveAndCloseButton.Label.ToolTipText = ModManager.GetText("saveCloseInfo");
         saveAndCloseButton.OnMouseClick += SaveAndCloseButton_OnMouseClick;
+        saveAndCloseButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GameSetupSaveAndClose);
         ModPanel.Components.Add(saveAndCloseButton);
 
         extractFilesButton.Size = new Vector2(60, 12);
@@ -286,6 +301,12 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
         {
             modListScrollBar.ScrollIndex = modList.ScrollIndex;
         }
+
+        if (moveNextStage)
+        {
+            moveNextStage = false;
+            MoveNextStage();
+        }
     }
 
     bool GetModSettings(ref ModSettings ms)
@@ -314,7 +335,8 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
             modsett.modInfo = mods[i].ModInfo;
             modsett.enabled = mods[i].Enabled;
             modSettings[i] = modsett;
-            modList.AddItem(modsett.modInfo.ModTitle);
+            modList.AddItem(modsett.modInfo.ModTitle, out ListBox.ListItem item);
+            item.textColor = modsett.enabled ? unselectedTextColor : disabledModTextColor;
         }
 
         if (modList.SelectedIndex < 0 || modList.SelectedIndex >= modList.Count)
@@ -353,15 +375,15 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
 
         Mod mod = ModManager.Instance.GetMod(ms.modInfo.ModTitle);
 
+        modDFTFUVersionLabel.TextColor = mod.IsGameVersionSatisfied() == false ? Color.red : DaggerfallUI.DaggerfallDefaultTextColor;
+
 #if UNITY_EDITOR
         if (mod.IsVirtual)
             modTitleLabel.Text += " (debug)";
 #endif
 
-        if (ms.enabled)
-            modList.SelectedTextColor = selectedTextColor;
-        else
-            modList.SelectedTextColor = Color.red;
+        bool hasDescription = !string.IsNullOrWhiteSpace(ms.modInfo.ModDescription);
+        showModDescriptionButton.BackgroundColor = hasDescription ? textColor : disabledButtonBackground;
 
         // Update buttons
         if (mod.HasSettings)
@@ -380,7 +402,7 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
         }
     }
 
-    private void CleanConfigurationDirectory(Action onPerformed = null)
+    private void CleanConfigurationDirectory()
     {
         var unknownDirectories = Directory.GetDirectories(ModManager.Instance.ModDataDirectory)
             .Select(x => new DirectoryInfo(x))
@@ -403,16 +425,107 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
                 }
 
                 messageBox.CancelWindow();
-
-                if (onPerformed != null)
-                    onPerformed();
+                moveNextStage = true;
             };
             uiManager.PushWindow(cleanConfigMessageBox);
         }
         else
         {
-            if (onPerformed != null)
-                onPerformed();
+            moveNextStage = true;
+        }
+    }
+
+    private void CheckDependencies()
+    {
+        bool hasSortIssues = false;
+        List<string> errorMessages = null;
+        var modErrorMessages = new List<string>();
+        
+        foreach (Mod mod in ModManager.Instance.Mods.Where(x => x.Enabled))
+        {
+            bool? isGameVersionSatisfied = mod.IsGameVersionSatisfied();
+            if (!isGameVersionSatisfied.HasValue)
+                Debug.LogErrorFormat("Mod {0} requires unknown game version ({1}).", mod.Title, mod.ModInfo.DFUnity_Version);
+            else if (!isGameVersionSatisfied.Value)
+                modErrorMessages.Add(string.Format(ModManager.GetText("gameVersionUnsatisfied"), mod.ModInfo.DFUnity_Version));
+
+            ModManager.Instance.CheckModDependencies(mod, modErrorMessages, ref hasSortIssues);
+            if (modErrorMessages.Count > 0)
+            {
+                if (errorMessages == null)
+                {
+                    errorMessages = new List<string>();
+                    errorMessages.Add(ModManager.GetText("dependencyErrorMessage"));
+                    errorMessages.Add(string.Empty);
+                }
+
+                errorMessages.Add(string.Format("- {0}", mod.Title));
+                errorMessages.AddRange(modErrorMessages);
+                errorMessages.Add(string.Empty);
+                modErrorMessages.Clear();
+            }
+        }
+
+        if (errorMessages != null && errorMessages.Count > 0)
+        {
+            if (hasSortIssues)
+                errorMessages.Add(ModManager.GetText("sortModsQuestion"));
+
+            var messageBox = new DaggerfallMessageBox(uiManager, this);
+            messageBox.EnableVerticalScrolling(80);
+            messageBox.SetText(errorMessages.ToArray());
+            if (hasSortIssues)
+            {
+                messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.Yes);
+                messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.No, true);
+                messageBox.OnButtonClick += (sender, button) =>
+                {
+                    if (button == DaggerfallMessageBox.MessageBoxButtons.Yes)
+                    {
+                        ModManager.Instance.AutoSortMods();
+                        Debug.Log("Mods have been sorted automatically");
+                    }
+
+                    sender.CancelWindow();
+                    moveNextStage = true;
+                };
+            }
+            else
+            {
+                messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.OK, true);
+                messageBox.OnButtonClick += (sender, button) =>
+                {
+                    sender.CancelWindow();
+                    moveNextStage = true;
+                };
+            }
+            messageBox.Show();
+        }
+        else
+        {
+            moveNextStage = true;
+        }
+    }
+
+    private void SaveAndClose()
+    {
+        ModManager.WriteModSettings();
+        CloseWindow();
+    }
+
+    private void MoveNextStage()
+    {
+        switch (currentStage = (Stage)((int)currentStage + 1))
+        {
+            case Stage.Cleanup:
+                CleanConfigurationDirectory();
+                break;
+            case Stage.CheckDependencies:
+                CheckDependencies();
+                break;
+            default:
+                SaveAndClose();
+                break;
         }
     }
 
@@ -479,10 +592,8 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
             mod = null;
         }
 
-        //save current mod settings to file
-        ModManager.WriteModSettings();
         ModManager.Instance.SortMods();
-        CleanConfigurationDirectory(() => DaggerfallUI.UIManager.PopWindow());
+        MoveNextStage();
     }
 
     void ExtractFilesButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
@@ -498,27 +609,37 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
         }
 
         string[] assets = mod.AssetNames;
-        string path = Path.Combine(mod.DirPath, mod.Title + "_ExtractedFiles");
+        if (assets == null)
+            return;
 
-        if (!Directory.Exists(path))
-        {
-            Directory.CreateDirectory(path);
-        }
+        string path = Path.Combine(Application.persistentDataPath, "Mods", "ExtractedFiles", mod.FileName);
+        Directory.CreateDirectory(path);
 
         for (int i = 0; i < assets.Length; i++)
         {
-            string extension = assets[i].Substring(assets[i].LastIndexOf('.'));
-
+            string extension = Path.GetExtension(assets[i]);
             if (!ModManager.textExtensions.Contains(extension))
                 continue;
 
-            TextAsset asset = mod.GetAsset<TextAsset>(assets[i]);
-
+            var asset = mod.GetAsset<TextAsset>(assets[i]);
             if (asset == null)
                 continue;
-            File.WriteAllText(Path.Combine(path, asset.name + ".txt"), asset.ToString()); //append .txt at end of asset name so mod info file will never end in .dfmod
-                                                                                                               //which would cause it to be tried to load by mod manager as an asset bundle if in mod directory
-            Debug.Log(string.Format("asset type for asset : {0} {1}", asset.name, asset.GetType().Name));
+
+            if (assets[i].EndsWith(".bytes", StringComparison.Ordinal))
+            {
+                // Export binary asset without .bytes extension
+                File.WriteAllBytes(Path.Combine(path, asset.name), asset.bytes);
+            }
+            else if (assets[i].EndsWith(".cs.txt", StringComparison.Ordinal))
+            {
+                // Export C# script without .txt extension
+                File.WriteAllText(Path.Combine(path, asset.name), asset.text);
+            }
+            else
+            {
+                // Export text asset with original extension
+                File.WriteAllText(Path.Combine(path, asset.name + extension), asset.text);
+            }
         }
 
         var messageBox = new DaggerfallMessageBox(uiManager, this, true);
@@ -563,7 +684,7 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
     {
         if (modSettings == null || modSettings.Length < 1)
             return;
-        else if (string.IsNullOrEmpty(modSettings[currentSelection].modInfo.ModDescription))
+        else if (string.IsNullOrWhiteSpace(modSettings[currentSelection].modInfo.ModDescription))
             return;
 
         ModDescriptionMessageBox = new DaggerfallMessageBox(uiManager, this, true);
@@ -595,6 +716,7 @@ public class ModLoaderInterfaceWindow : DaggerfallPopupWindow
             return;
 
         modSettings[modList.SelectedIndex].enabled = modEnabledCheckBox.IsChecked;
+        modList.SelectedValue.textColor = modEnabledCheckBox.IsChecked ? unselectedTextColor : disabledModTextColor;
         UpdateModPanel();
     }
 

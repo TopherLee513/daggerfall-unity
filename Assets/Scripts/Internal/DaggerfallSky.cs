@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -18,6 +18,7 @@ using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
 using DaggerfallConnect.Utility;
 using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Game;
 
 namespace DaggerfallWorkshop
 {
@@ -57,6 +58,7 @@ namespace DaggerfallWorkshop
         const float skyScale = 1.3f;            // Scale of sky image relative to display area
 
         DaggerfallUnity dfUnity;
+        WeatherManager weatherManager;
         public SkyFile skyFile;
         public ImgFile imgFile;
         Camera mainCamera;
@@ -69,7 +71,6 @@ namespace DaggerfallWorkshop
         int lastSkyFrame = -1;
         bool lastNightFlag = false;
         Rect westRect, eastRect;
-        CameraClearFlags initialClearFlags;
         System.Random random = new System.Random(0);
         bool showNightSky = true;
 
@@ -94,6 +95,7 @@ namespace DaggerfallWorkshop
         void Start()
         {
             dfUnity = DaggerfallUnity.Instance;
+            weatherManager = FindObjectOfType<WeatherManager>();
 
             // Try to find local player GPS if not set
             if (LocalPlayerGPS == null)
@@ -120,9 +122,6 @@ namespace DaggerfallWorkshop
                 return;
             }
 
-            // Save starting clear flags
-            initialClearFlags = mainCamera.clearFlags;
-
             // Get my camera
             myCamera = GetComponent<Camera>();
             if (!myCamera)
@@ -147,13 +146,6 @@ namespace DaggerfallWorkshop
         void OnEnable()
         {
             SetupCameras();
-        }
-
-        void OnDisable()
-        {
-            // Restore main camera clear flags so we left it how we found it
-            if (mainCamera)
-                mainCamera.clearFlags = initialClearFlags;
         }
 
         void Update()
@@ -248,8 +240,8 @@ namespace DaggerfallWorkshop
             float yShear = (Mathf.Tan(angleXRadians) * zoom) * 0.50f;
             float scrollY = Mathf.Clamp(baseScrollY - (yShear * Screen.height), -height, 0f);
 
-            westRect = new Rect(westOffset + scrollX, scrollY, width, height);
-            eastRect = new Rect(eastOffset + scrollX, scrollY, width, height);
+            westRect = new Rect((int)(westOffset + scrollX), scrollY, width, height);
+            eastRect = new Rect((int)(eastOffset + scrollX), scrollY, width, height);
         }
 
         private void DrawSky()
@@ -330,8 +322,21 @@ namespace DaggerfallWorkshop
             cameraClearColor = colors.clearColor;
             myCamera.backgroundColor = ((cameraClearColor * SkyTintColor) * 2f) * SkyColorScale;
 
-            // Assign colour to fog
-            UnityEngine.RenderSettings.fogColor = cameraClearColor;
+            // Set gray fog color for anything denser than heavy rain, otherwise use sky color for atmospheric fogging
+            // Only operates when weatherManager can be found (i.e. in game scene) while DaggerfallSky is running
+            if (weatherManager)
+            {
+                WeatherManager.FogSettings currentFogSettings = GameManager.Instance.WeatherManager.currentOutdoorFogSettings;
+                WeatherManager.FogSettings rainyFogSettings = GameManager.Instance.WeatherManager.RainyFogSettings;
+                if (currentFogSettings.fogMode == FogMode.Exponential && currentFogSettings.density > rainyFogSettings.density)
+                    RenderSettings.fogColor = Color.gray;
+                else
+                    RenderSettings.fogColor = cameraClearColor;
+            }
+            else
+            {
+                RenderSettings.fogColor = cameraClearColor;
+            }
         }
 
         private void ApplyTimeAndSpace()
@@ -475,7 +480,6 @@ namespace DaggerfallWorkshop
             if (AutoCameraSetup)
             {
                 myCamera.depth = mainCamera.depth + myCameraDepth;
-                mainCamera.clearFlags = CameraClearFlags.Nothing;
             }
         }
 

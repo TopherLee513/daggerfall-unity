@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -22,6 +22,8 @@ using System;
 using DaggerfallWorkshop.Game.Guilds;
 using DaggerfallWorkshop.Game.Formulas;
 using DaggerfallWorkshop.Game.Utility;
+using DaggerfallWorkshop.Game.MagicAndEffects;
+using DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 {
@@ -49,8 +51,6 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         #region Fields
 
-        protected const string textDatabase = "DaggerfallUI";
-
         const string baseTextureName = "GILD00I0.IMG";      // Join Guild / Talk / Service
         const string memberTextureName = "GILD01I0.IMG";      // Join Guild / Talk / Service
 
@@ -62,6 +62,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         const int TooGenerousId = 702;
         const int DonationThanksId = 703;
         const int SorcerorMagickaRecharge = 465;
+        const int TempleResetStats = 403;
 
         Texture2D baseTexture;
         PlayerEntity playerEntity;
@@ -73,9 +74,13 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         GuildServices service;
         int buildingFactionId;  // Needed for temples & orders
 
-        Guild guild;
+        IGuild guild;
         PlayerGPS.DiscoveredBuilding buildingDiscoveryData;
         int curingCost = 0;
+
+        bool isCloseWindowDeferred = false;
+        bool isTalkWindowDeferred = false;
+        bool isServiceWindowDeferred = false;
 
         List<QuestData> questPool;
 
@@ -129,11 +134,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             {
                 joinButton = DaggerfallUI.AddButton(joinButtonRect, mainPanel);
                 joinButton.OnMouseClick += JoinButton_OnMouseClick;
+                joinButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GuildsJoin);
             }
 
             // Talk button
             talkButton = DaggerfallUI.AddButton(talkButtonRect, mainPanel);
             talkButton.OnMouseClick += TalkButton_OnMouseClick;
+            talkButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GuildsTalk);
+            talkButton.OnKeyboardEvent += TalkButton_OnKeyboardEvent;
 
             // Service button
             serviceLabel.Position = new Vector2(0, 1);
@@ -143,10 +151,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             serviceButton = DaggerfallUI.AddButton(serviceButtonRect, mainPanel);
             serviceButton.Components.Add(serviceLabel);
             serviceButton.OnMouseClick += ServiceButton_OnMouseClick;
+            serviceButton.Hotkey = DaggerfallShortcut.GetBinding(Services.GetServiceShortcutButton(service));
+            serviceButton.OnKeyboardEvent += ServiceButton_OnKeyboardEvent;
 
             // Exit button
             exitButton = DaggerfallUI.AddButton(exitButtonRect, mainPanel);
             exitButton.OnMouseClick += ExitButton_OnMouseClick;
+            exitButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GuildsExit);
+            exitButton.OnKeyboardEvent += ExitButton_OnKeyboardEvent;
 
             NativePanel.Components.Add(mainPanel);
         }
@@ -167,10 +179,26 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 messageBox.Show();
             }
             // Check for free healing (Temple members)
-            if (guild.FreeHealing() && playerEntity.CurrentHealth < playerEntity.MaxHealth)
+            if (guild.FreeHealing())
             {
-                playerEntity.SetHealth(playerEntity.MaxHealth);
-                DaggerfallUI.MessageBox(350);
+                // Free heal
+                if (playerEntity.CurrentHealth < playerEntity.MaxHealth)
+                {
+                    playerEntity.SetHealth(playerEntity.MaxHealth);
+                    DaggerfallUI.MessageBox(350);
+                }
+                // Check for free stat restoration (Temple members)
+                EntityEffectManager playerEffectMgr = playerEntity.EntityBehaviour.GetComponent<EntityEffectManager>();
+                if (playerEffectMgr != null)
+                {
+                    if (playerEffectMgr.HasDamagedAttributes())
+                    {
+                        DaggerfallMessageBox messageBox =
+                            new DaggerfallMessageBox(uiManager, DaggerfallMessageBox.CommonMessageBoxButtons.YesNo, TempleResetStats, uiManager.TopWindow);
+                        messageBox.OnButtonClick += ConfirmStatReset_OnButtonClick;
+                        messageBox.Show();
+                    }
+                }
             }
             // Check for magicka restoration (sorcerers)
             if (guild.FreeMagickaRecharge() && playerEntity.CurrentMagicka < playerEntity.MaxMagicka)
@@ -182,6 +210,16 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
                 // Refill magicka
                 playerEntity.SetMagicka(playerEntity.MaxMagicka);
+            }
+        }
+
+        private void ConfirmStatReset_OnButtonClick(DaggerfallMessageBox sender, DaggerfallMessageBox.MessageBoxButtons messageBoxButton)
+        {
+            CloseWindow();
+            if (messageBoxButton == DaggerfallMessageBox.MessageBoxButtons.Yes)
+            {
+                EntityEffectManager playerEffectMgr = playerEntity.EntityBehaviour.GetComponent<EntityEffectManager>();
+                playerEffectMgr.CureAllAttributes();
             }
         }
 
@@ -257,10 +295,25 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void TalkButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             GameManager.Instance.TalkManager.TalkToStaticNPC(serviceNPC);
         }
 
-        private void ServiceButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
+        void TalkButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+            {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+                isTalkWindowDeferred = true;
+            }
+            else if (keyboardEvent.type == EventType.KeyUp && isTalkWindowDeferred)
+            {
+                isTalkWindowDeferred = false;
+                GameManager.Instance.TalkManager.TalkToStaticNPC(serviceNPC);
+            }
+        }
+
+        private void DoGuildService()
         {
             // Check access to service
             if (!guild.CanAccessService(service))
@@ -274,11 +327,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 }
                 else
                 {
-                    DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "serviceMembersOnly"));
+                    DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("serviceMembersOnly"));
                 }
                 return;
             }
             // Handle known service
+            DaggerfallTradeWindow tradeWindow;
             switch (service)
             {
                 case GuildServices.Quests:
@@ -287,12 +341,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
                 case GuildServices.Identify:
                     CloseWindow();
-                    uiManager.PushWindow(new DaggerfallTradeWindow(uiManager, DaggerfallTradeWindow.WindowModes.Identify, this, guild));
+                    uiManager.PushWindow(UIWindowFactory.GetInstanceWithArgs(UIWindowType.Trade, new object[] { uiManager, this, DaggerfallTradeWindow.WindowModes.Identify, guild }));
                     break;
 
                 case GuildServices.Repair:
                     CloseWindow();
-                    uiManager.PushWindow(new DaggerfallTradeWindow(uiManager, DaggerfallTradeWindow.WindowModes.Repair, this, guild));
+                    uiManager.PushWindow(UIWindowFactory.GetInstanceWithArgs(UIWindowType.Trade, new object[] { uiManager, this, DaggerfallTradeWindow.WindowModes.Repair, guild }));
                     break;
 
                 case GuildServices.Training:
@@ -309,9 +363,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
                 case GuildServices.BuyPotions:
                     CloseWindow();
-                    uiManager.PushWindow(new DaggerfallTradeWindow(uiManager, DaggerfallTradeWindow.WindowModes.Buy, this, guild) {
-                        MerchantItems = GetMerchantPotions()
-                    });
+                    tradeWindow = (DaggerfallTradeWindow)UIWindowFactory.GetInstanceWithArgs(UIWindowType.Trade, new object[] { uiManager, this, DaggerfallTradeWindow.WindowModes.Buy, guild });
+                    tradeWindow.MerchantItems = GetMerchantPotions();
+                    uiManager.PushWindow(tradeWindow);
                     break;
 
                 case GuildServices.MakePotions:
@@ -321,22 +375,22 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 case GuildServices.BuySpells:
                 case GuildServices.BuySpellsMages:
                     CloseWindow();
-                    uiManager.PushWindow(new DaggerfallSpellBookWindow(uiManager, this, true));
+                    uiManager.PushWindow(UIWindowFactory.GetInstanceWithArgs(UIWindowType.SpellBook, new object[] { uiManager, this, true }));
                     break;
 
                 case GuildServices.MakeSpells:
                     CloseWindow();
-                    if (GameManager.Instance.PlayerEntity.Items.Contains(Items.ItemGroups.MiscItems, (int)Items.MiscItems.Spellbook))
+                    if (GameManager.Instance.PlayerEntity.Items.Contains(ItemGroups.MiscItems, (int)MiscItems.Spellbook))
                         uiManager.PushWindow(DaggerfallUI.Instance.DfSpellMakerWindow);
                     else
-                        DaggerfallUI.MessageBox(TextManager.Instance.GetText("ClassicEffects", "noSpellbook"));
+                        DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("noSpellbook"));
                     break;
 
                 case GuildServices.BuyMagicItems:   // TODO: switch items depending on npcService?
                     CloseWindow();
-                    uiManager.PushWindow(new DaggerfallTradeWindow(uiManager, DaggerfallTradeWindow.WindowModes.Buy, this, guild) {
-                        MerchantItems = GetMerchantMagicItems()
-                    });
+                    tradeWindow = (DaggerfallTradeWindow)UIWindowFactory.GetInstanceWithArgs(UIWindowType.Trade, new object[] { uiManager, this, DaggerfallTradeWindow.WindowModes.Buy, guild });
+                    tradeWindow.MerchantItems = GetMerchantMagicItems();
+                    uiManager.PushWindow(tradeWindow);
                     break;
 
                 case GuildServices.MakeMagicItems:
@@ -346,7 +400,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
                 case GuildServices.SellMagicItems:
                     CloseWindow();
-                    uiManager.PushWindow(new DaggerfallTradeWindow(uiManager, DaggerfallTradeWindow.WindowModes.SellMagic, this, guild));
+                    uiManager.PushWindow(UIWindowFactory.GetInstanceWithArgs(UIWindowType.Trade, new object[] { uiManager, this, DaggerfallTradeWindow.WindowModes.SellMagic, guild }));
                     break;
 
                 case GuildServices.Teleport:
@@ -356,7 +410,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                     break;
 
                 case GuildServices.DaedraSummoning:
-                    DaedraSummoningService((int) npcService);
+                    DaedraSummoningService((int)npcService);
                     break;
 
                 case GuildServices.ReceiveArmor:
@@ -373,15 +427,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                     msgBox.SetTextTokens(DaggerfallUnity.Instance.TextProvider.GetRandomTokens(spyMasterGreetingTextId));
                     msgBox.ClickAnywhereToClose = true;
                     msgBox.OnClose += SpyMasterGreetingPopUp_OnClose;
-                    msgBox.Show();                    
+                    msgBox.Show();
                     break;
 
                 case GuildServices.BuySoulgems:
                     CloseWindow();
-                    uiManager.PushWindow(new DaggerfallTradeWindow(uiManager, DaggerfallTradeWindow.WindowModes.Buy, this, guild)
-                    {
-                        MerchantItems = GetMerchantMagicItems(true)
-                    });
+                    tradeWindow = (DaggerfallTradeWindow)UIWindowFactory.GetInstanceWithArgs(UIWindowType.Trade, new object[] { uiManager, this, DaggerfallTradeWindow.WindowModes.Buy, guild });
+                    tradeWindow.MerchantItems = GetMerchantMagicItems(true);
+                    uiManager.PushWindow(tradeWindow);
                     break;
 
                 default:
@@ -395,9 +448,44 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
         }
 
+        private void ServiceButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
+        {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+            DoGuildService();
+        }
+
+        void ServiceButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+            {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+                isServiceWindowDeferred = true;
+            }
+            else if (keyboardEvent.type == EventType.KeyUp && isServiceWindowDeferred)
+            {
+                isServiceWindowDeferred = false;
+                DoGuildService();
+            }
+        }
+
         private void ExitButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             CloseWindow();
+        }
+
+        protected void ExitButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+            {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+                isCloseWindowDeferred = true;
+            }
+            else if (keyboardEvent.type == EventType.KeyUp && isCloseWindowDeferred)
+            {
+                isCloseWindowDeferred = false;
+                CloseWindow();
+            }
         }
 
         #endregion
@@ -406,6 +494,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void JoinButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             CloseWindow();
             guild = guildManager.JoinGuild(guildGroup, buildingFactionId);
             if (guild == null)
@@ -433,6 +522,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         public void ConfirmJoinGuild_OnButtonClick(DaggerfallMessageBox sender, DaggerfallMessageBox.MessageBoxButtons messageBoxButton)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             sender.CloseWindow();
             if (messageBoxButton == DaggerfallMessageBox.MessageBoxButtons.Yes)
             {
@@ -467,16 +557,17 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // Get the faction id for affecting reputation on success/failure
             int factionId = GetFactionIdForGuild();
 
-            // Select a quest at random from appropriate pool
+            // Set up a pool of available quests.
             QuestListsManager questListsManager = GameManager.Instance.QuestListsManager;
-            questPool = GameManager.Instance.QuestListsManager.GetGuildQuestPool(guildGroup, status, factionId, guild.GetReputation(playerEntity), guild.Rank);
+            questPool = questListsManager.GetGuildQuestPool(guildGroup, status, factionId, guild.GetReputation(playerEntity), guild.Rank);
 
+            // Show the quest selection list if that feature has been enabled.
             if (DaggerfallUnity.Settings.GuildQuestListBox)
             {
                 TextFile.Token[] tokens = DaggerfallUnity.Instance.TextProvider.CreateTokens(
                     TextFile.Formatting.JustifyCenter,
-                    TextManager.Instance.GetText(textDatabase, "gettingQuests1"),
-                    TextManager.Instance.GetText(textDatabase, "gettingQuests2"));
+                    TextManager.Instance.GetLocalizedText("gettingQuests1"),
+                    TextManager.Instance.GetLocalizedText("gettingQuests2"));
 
                 DaggerfallMessageBox gettingQuestsBox = new DaggerfallMessageBox(DaggerfallUI.UIManager, this);
                 gettingQuestsBox.ClickAnywhereToClose = true;
@@ -486,6 +577,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
             else
             {
+                // Select a quest at random from appropriate pool
                 offeredQuest = questListsManager.SelectQuest(questPool, factionId);
                 OfferQuest();
             }
@@ -517,37 +609,43 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             {
                 ShowFailGetQuestMessage();
             }
+            questPool.Clear();
         }
 
         private void GettingQuestsBox_OnClose()
         {
             DaggerfallListPickerWindow questPicker = new DaggerfallListPickerWindow(uiManager, uiManager.TopWindow);
             questPicker.OnItemPicked += QuestPicker_OnItemPicked;
+            // Populate a list with quests that the player can choose from.
+            List<int> failures = new List<int>();
             for (int i = 0; i < questPool.Count; i++)
             {
                 try
                 {
-                    Quest quest = GameManager.Instance.QuestListsManager.LoadQuest(questPool[i], GetFactionIdForGuild());
-                    if (quest != null)
-                        questPicker.ListBox.AddItem(quest.DisplayName == null ? quest.QuestName : quest.DisplayName);
-                    else
-                        questPool.RemoveAt(i);  // Remove any that fail compilation
+                    // Partially loading the quest to get the human readable quest name.
+                    Quest quest = GameManager.Instance.QuestListsManager.LoadQuest(questPool[i], GetFactionIdForGuild(), true);
+                    questPicker.ListBox.AddItem(quest.DisplayName ?? quest.QuestName);
+                    quest.Dispose();
                 }
                 catch (Exception)
                 {
-                    questPool.RemoveAt(i);  // Remove any that throw exceptions
+                    failures.Add(i);  // Add to list any that fail (partial) parsing
                 }
             }
+            // Remove any quests that failed partial parsing
+            foreach (int i in failures)
+                questPool.RemoveAt(i);
+
             uiManager.PushWindow(questPicker);
         }
 
         public void QuestPicker_OnItemPicked(int index, string name)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             DaggerfallUI.UIManager.PopWindow();
             if (index < questPool.Count)
             {
-                QuestData questData = questPool[index];
-                offeredQuest = GameManager.Instance.QuestListsManager.LoadQuest(questData, GetFactionIdForGuild());
+                offeredQuest = GameManager.Instance.QuestListsManager.LoadQuest(questPool[index], GetFactionIdForGuild());
                 OfferQuest();
             }
         }
@@ -665,7 +763,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             CloseWindow();
             DaggerfallInputMessageBox donationMsgBox = new DaggerfallInputMessageBox(uiManager, this);
-            donationMsgBox.SetTextBoxLabel(TextManager.Instance.GetText(textDatabase, "serviceDonateHowMuch"));
+            donationMsgBox.SetTextBoxLabel(TextManager.Instance.GetLocalizedText("serviceDonateHowMuch"));
             donationMsgBox.TextPanelDistanceX = 6;
             donationMsgBox.TextPanelDistanceY = 6;
             donationMsgBox.TextBox.Numeric = true;
@@ -680,7 +778,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             int amount = 0;
             if (int.TryParse(input, out amount))
             {
-                if (playerEntity.GetGoldAmount() > amount)
+                if (playerEntity.GetGoldAmount() >= amount)
                 {
                     // Deduct gold, and apply blessing
                     playerEntity.DeductGoldAmount(amount);
@@ -713,6 +811,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         void CureDiseaseService()
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             CloseWindow();
             int numberOfDiseases = GameManager.Instance.PlayerEffectManager.DiseaseCount;
 
@@ -730,7 +829,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             {
                 GameManager.Instance.PlayerEffectManager.CureAllDiseases();
                 playerEntity.TimeToBecomeVampireOrWerebeast = 0;
-                DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "freeHolidayCuring"));
+                DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("freeHolidayCuring"));
             }
             else if (numberOfDiseases > 0)
             {
@@ -785,7 +884,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                     playerEntity.DeductGoldAmount(curingCost);
                     GameManager.Instance.PlayerEffectManager.CureAllDiseases();
                     playerEntity.TimeToBecomeVampireOrWerebeast = 0;
-                    DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "curedDisease"));
+                    DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("curedDisease"));
                 }
                 else
                     DaggerfallUI.MessageBox(NotEnoughGoldId);

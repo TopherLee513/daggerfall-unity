@@ -6,6 +6,7 @@
 -- QuestId: 6
 Messages: 24
 Quest: P0B00L06
+DisplayName: Deadly Knowledge
 -- Message panels
 QRC:
 
@@ -134,11 +135,11 @@ Message:  1015
 <ce>                 right one for this, being sufficiently
 <ce>                 mettlesome, thewy, in short, puissant
 <ce>                            to aid _mage_, a
-<ce>                  sorceror who fears that %g3 research
+<ce>                  sorcerer who fears that %g3 research
 <ce>                  has attracted the, ah, inquisitorial
 <ce>                attention of a local tribe of vampires.
 <ce>                  Too much work had made the poor old
-<ce>                 sorceror, well, oversensitive. If you
+<ce>                 sorcerer, well, oversensitive. If you
 <ce>                   would just pop on over to %g3 lab,
 <ce>                       ___mondung_, and get these
 <ce>                 precious notes, I would be very, very,
@@ -163,7 +164,7 @@ Message:  1018
 <ce>                       vampires could be anyone.
 
 Message:  1019
-%dat: _mg_ of
+%qdt: _mg_ of
  __mg_ in ___mg_
  wants me to go to ___mondung_
  to take _mage_'s
@@ -186,7 +187,7 @@ Message:  1020
  How is one cured of vampirism (find
  that Vampires of the Iliac Bay book,
  references to a society of former
- vampires)? Slaying the preeminant member
+ vampires)? Slaying the preeminent member
  of the same bloodline, from what I can
  gather from personal interviews and
  whatnot. (Note to me: that rather
@@ -205,7 +206,7 @@ Message:  1020
  about increasing funding. Going nowhere.
 
 Message:  1021
-%dat: A sorceror named
+%qdt: A sorcerer named
  _mage_ has come close
  to major discoveries about %vam
  and _vamp_ has sent me

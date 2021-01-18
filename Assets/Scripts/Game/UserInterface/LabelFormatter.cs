@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -149,14 +149,14 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
         public bool ReformatBook(int id)
         {
-            if (DaggerfallUnity.Settings.CustomBooksImport)
-                return ReformatBook(DaggerfallUnity.Instance.ItemHelper.GetBookFileNameByMessage(id));
-
-            return ReformatBook(BookFile.messageToBookFilename(id));
+            return ReformatBook(DaggerfallUnity.Instance.ItemHelper.GetBookFileName(id));
         }
 
         public bool ReformatBook(string filename)
         {
+            if (string.IsNullOrEmpty(filename))
+                return false;
+
             // Try to open book
             BookFile book = new BookFile();
             if (!BookReplacement.TryImportBook(filename, book) &&
@@ -186,9 +186,9 @@ namespace DaggerfallWorkshop.Game.UserInterface
             {
                 switch (token.formatting)
                 {
-                    // Set font on current group
+                    // Set font on current group - note that tokens are 1-based and DaggerfallFont.FontName is 0-based
                     case TextFile.Formatting.FontPrefix:
-                        workingGroup.font = prevFont = DaggerfallUI.Instance.GetFont(token.x);
+                        workingGroup.font = prevFont = DaggerfallUI.Instance.GetFont((DaggerfallFont.FontName)token.x - 1);
                         break;
 
                     // Text is added to working group

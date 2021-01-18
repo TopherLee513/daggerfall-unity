@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -28,8 +28,10 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
     {
         #region Fields
 
-        const string textDatabase = "DaggerfallUI";
         const string nativeImgName = "LGBK00I0.IMG";
+
+        const SoundClips openJournal = SoundClips.OpenBook;
+        const SoundClips editNotebook = SoundClips.PageTurn; // same as spellbook edit sounds
 
         const int NULLINT = -1;
         public const int maxLinesQuests = 20;
@@ -62,6 +64,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         Button upArrowButton;
         Button downArrowButton;
         Button exitButton;
+
+        bool isCloseWindowDeferred = false;
 
         public JournalDisplay DisplayMode { get; set; }
 
@@ -113,15 +117,17 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             dialogButton.Position           = new Vector2(32, 187);
             dialogButton.Size               = new Vector2(68, 10);
             dialogButton.OnMouseClick       += DialogButton_OnMouseClick;
+            dialogButton.Hotkey             = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.JournalNextCategory);
             dialogButton.Name               = "dialog_button";
             dialogButton.ToolTip            = defaultToolTip;
-            dialogButton.ToolTipText        = TextManager.Instance.GetText(textDatabase, "dialogButtonInfo");
+            dialogButton.ToolTipText        = TextManager.Instance.GetLocalizedText("dialogButtonInfo");
             mainPanel.Components.Add(dialogButton);
 
             upArrowButton                   = new Button();
             upArrowButton.Position          = new Vector2(181, 188);
             upArrowButton.Size              = new Vector2(13, 7);
             upArrowButton.OnMouseClick      += UpArrowButton_OnMouseClick;
+            upArrowButton.Hotkey            = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.JournalPreviousPage);
             upArrowButton.Name              = "uparrow_button";
             mainPanel.Components.Add(upArrowButton);
 
@@ -129,6 +135,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             downArrowButton.Position        = new Vector2(209, 188);
             downArrowButton.Size            = new Vector2(13, 7);
             downArrowButton.OnMouseClick    += DownArrowButton_OnMouseClick;
+            downArrowButton.Hotkey          = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.JournalNextPage);
             downArrowButton.Name            = "downarrow_button";
             mainPanel.Components.Add(downArrowButton);
 
@@ -136,6 +143,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             exitButton.Position             = new Vector2(278, 187);
             exitButton.Size                 = new Vector2(30, 9);
             exitButton.OnMouseClick         += ExitButton_OnMouseClick;
+            exitButton.Hotkey               = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.JournalExit);
+            exitButton.OnKeyboardEvent      += ExitButton_OnKeyboardEvent;
             exitButton.Name                 = "exit_button";
             mainPanel.Components.Add(exitButton);
 
@@ -156,7 +165,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 Font = DaggerfallUI.LargeFont,
                 ShadowColor = new Color(0f, 0.2f, 0.5f),
                 ToolTip = defaultToolTip,
-                ToolTipText = TextManager.Instance.GetText(textDatabase, "activeQuestsInfo"),
+                ToolTipText = TextManager.Instance.GetLocalizedText("activeQuestsInfo"),
             };
             titlePanel.Components.Add(titleLabel);
             mainPanel.Components.Add(titlePanel);
@@ -180,10 +189,15 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         public override void OnPush()
         {
             base.OnPush();
+
+            toggleClosedBinding1 = InputManager.Instance.GetBinding(InputManager.Actions.LogBook);
+            toggleClosedBinding2 = InputManager.Instance.GetBinding(InputManager.Actions.NoteBook);
+
             questMessages       = QuestMachine.Instance.GetAllQuestLogMessages();
             lastMessageIndex    = NULLINT;
             currentMessageIndex = 0;
             selectedEntry       = NULLINT;
+            DaggerfallUI.Instance.PlayOneShot(openJournal);
         }
 
         public override void OnPop()
@@ -197,9 +211,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             base.Update();
 
-            // Toggle window closed with same hotkey used to open it
-            if (Input.GetKeyUp(toggleClosedBinding1) || Input.GetKeyUp(toggleClosedBinding2))
-                CloseWindow();
+            if (!DaggerfallUI.Instance.HotkeySequenceProcessed)
+            {
+                // Toggle window closed with same hotkey used to open it
+                if (InputManager.Instance.GetKeyUp(toggleClosedBinding1) || InputManager.Instance.GetKeyUp(toggleClosedBinding2))
+                    CloseWindow();
+            }
 
             if (lastMessageIndex != currentMessageIndex)
             {
@@ -248,28 +265,33 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             lastMessageIndex = NULLINT;
             currentMessageIndex = 0;
             selectedEntry = NULLINT;
+            DaggerfallUI.Instance.PlayOneShot(openJournal);
         }
 
         void UpArrowButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.PageTurn);
             if (currentMessageIndex - 1 >= 0)
                 currentMessageIndex -= 1;
         }
 
         void DownArrowButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.PageTurn);
             if (currentMessageIndex + 1 < messageCount)
                 currentMessageIndex += 1;
         }
 
         void MainPanel_OnMouseScrollUp(BaseScreenComponent sender)
         {
-            UpArrowButton_OnMouseClick(sender, Vector2.zero);
+            if (currentMessageIndex - 1 >= 0)
+                currentMessageIndex -= 1;
         }
 
         void MainPanel_OnMouseScrollDown(BaseScreenComponent sender)
         {
-            DownArrowButton_OnMouseClick(sender, Vector2.zero);
+            if (currentMessageIndex + 1 < messageCount)
+                currentMessageIndex += 1;
         }
 
         void TitlePanel_OnMouseClick(BaseScreenComponent sender, Vector2 position)
@@ -279,7 +301,22 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         public void ExitButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             CloseWindow();
+        }
+
+        protected void ExitButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+            {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+                isCloseWindowDeferred = true;
+            }
+            else if (keyboardEvent.type == EventType.KeyUp && isCloseWindowDeferred)
+            {
+                isCloseWindowDeferred = false;
+                CloseWindow();
+            }
         }
 
         void QuestLogLabel_OnMouseClick(BaseScreenComponent sender, Vector2 position)
@@ -300,6 +337,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 if (currentMessageIndex == selectedEntry)
                     currentMessageIndex = 0;
                 lastMessageIndex = NULLINT;
+                DaggerfallUI.Instance.PlayOneShot(editNotebook);
             }
             selectedEntry = NULLINT;
             sender.CloseWindow();
@@ -330,6 +368,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             {
                 GameManager.Instance.PlayerEntity.Notebook.AddNote(enteredNoteLine, selectedEntry);
                 lastMessageIndex = NULLINT;
+                DaggerfallUI.Instance.PlayOneShot(editNotebook);
             }
             selectedEntry = NULLINT;
         }
@@ -413,6 +452,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                     MoveEntry(moveSrcIdx, selectedEntry);
                     lastMessageIndex = NULLINT;
                     selectedEntry = NULLINT;
+                    DaggerfallUI.Instance.PlayOneShot(editNotebook);
                 }
             }
         }
@@ -436,9 +476,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private DaggerfallMessageBox CreateDialogBox(string entryStr, string baseKey)
         {
-            string heading = TextManager.Instance.GetText(textDatabase, baseKey + "Head");
-            string action = TextManager.Instance.GetText(textDatabase, baseKey);
-            string explanation = TextManager.Instance.GetText(textDatabase, baseKey + "2");
+            string heading = TextManager.Instance.GetLocalizedText(baseKey + "Head");
+            string action = TextManager.Instance.GetLocalizedText(baseKey);
+            string explanation = TextManager.Instance.GetLocalizedText(baseKey + "2");
             TextFile.Token[] tokens = new TextFile.Token[] {
                 TextFile.CreateTextToken(heading), TextFile.CreateFormatToken(TextFile.Formatting.JustifyCenter), TextFile.NewLineToken,
                 TextFile.CreateTextToken(action), TextFile.NewLineToken, TextFile.NewLineToken,
@@ -462,7 +502,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 Debug.Log("Add at " + selectedEntry);
 
                 TextFile.Token prompt = new TextFile.Token() {
-                    text = TextManager.Instance.GetText(textDatabase, "enterNote"),
+                    text = TextManager.Instance.GetLocalizedText("enterNote"),
                     formatting = TextFile.Formatting.Text,
                 };
                 DaggerfallInputMessageBox enterNote =
@@ -517,11 +557,11 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             messageCount = questMessages.Count;
             questLogLabel.TextScale = 1;
-            titleLabel.Text = TextManager.Instance.GetText(textDatabase, "activeQuests");
-            titleLabel.ToolTipText = TextManager.Instance.GetText(textDatabase, "activeQuestsInfo");
+            titleLabel.Text = TextManager.Instance.GetLocalizedText("activeQuests");
+            titleLabel.ToolTipText = TextManager.Instance.GetLocalizedText("activeQuestsInfo");
 
             int totalLineCount = 0;
-            entryLineMap = new List<int>(maxLinesQuests);;
+            entryLineMap = new List<int>(maxLinesQuests);
             List<TextFile.Token> textTokens = new List<TextFile.Token>();
 
             for (int i = currentMessageIndex; i < questMessages.Count; i++)
@@ -561,8 +601,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             List<TextFile.Token[]> finishedQuests = GameManager.Instance.PlayerEntity.Notebook.GetFinishedQuests();
             messageCount = finishedQuests.Count;
             questLogLabel.TextScale = 1;
-            titleLabel.Text = TextManager.Instance.GetText(textDatabase, "finishedQuests");
-            titleLabel.ToolTipText = TextManager.Instance.GetText(textDatabase, "finishedQuestsInfo");
+            titleLabel.Text = TextManager.Instance.GetLocalizedText("finishedQuests");
+            titleLabel.ToolTipText = TextManager.Instance.GetLocalizedText("finishedQuestsInfo");
             SetTextWithListEntries(finishedQuests, maxLinesQuests);
         }
 
@@ -571,8 +611,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             List<TextFile.Token[]> notes = GameManager.Instance.PlayerEntity.Notebook.GetNotes();
             messageCount = notes.Count;
             questLogLabel.TextScale = textScaleSmall;
-            titleLabel.Text = TextManager.Instance.GetText(textDatabase, "notebook");
-            titleLabel.ToolTipText = TextManager.Instance.GetText(textDatabase, "notebookInfo");
+            titleLabel.Text = TextManager.Instance.GetLocalizedText("notebook");
+            titleLabel.ToolTipText = TextManager.Instance.GetLocalizedText("notebookInfo");
             SetTextWithListEntries(notes, maxLinesSmall);
         }
 
@@ -581,8 +621,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             List<TextFile.Token[]> messages = GameManager.Instance.PlayerEntity.Notebook.GetMessages();
             messageCount = messages.Count;
             questLogLabel.TextScale = textScaleSmall;
-            titleLabel.Text = TextManager.Instance.GetText(textDatabase, "messages");
-            titleLabel.ToolTipText = TextManager.Instance.GetText(textDatabase, "messagesInfo");
+            titleLabel.Text = TextManager.Instance.GetLocalizedText("messages");
+            titleLabel.ToolTipText = TextManager.Instance.GetLocalizedText("messagesInfo");
             SetTextWithListEntries(messages, maxLinesSmall);
         }
 

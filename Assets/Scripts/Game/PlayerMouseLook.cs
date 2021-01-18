@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -20,21 +20,29 @@ namespace DaggerfallWorkshop.Game
     //
     public class PlayerMouseLook : MonoBehaviour
     {
+        public const float PitchMax = 90;
+        public const float PitchMin = -90;
+
         const float piover2 = 1.570796f;
 
         Vector2 _mouseAbsolute;
         Vector2 _smoothMouse;
         float cameraPitch = 0.0f;
         float cameraYaw = 0.0f;
+        public bool cursorActive;
+        float pitchMax = PitchMax;
+        float pitchMin = PitchMin;
 
         public bool invertMouseY = false;
         public bool lockCursor;
         public Vector2 sensitivity = new Vector2(2, 2);
         public Vector2 smoothing = new Vector2(3, 3);
         public float sensitivityScale = 1.0f;
+        public float joystickSensitivityScale = 1.0f;
         public bool enableMouseLook = true;
         public bool enableSmoothing = true;
         public bool simpleCursorLock = false;
+        private bool forceHideCursor;
 
         // Assign this if there's a parent object controlling motion, such as a Character Controller.
         // Yaw rotation will affect this object instead of the camera if set.
@@ -48,6 +56,7 @@ namespace DaggerfallWorkshop.Game
             get { return cameraPitch * Mathf.Rad2Deg; }
             set
             {
+                value = Mathf.Clamp(value, PitchMin, pitchMax);
                 cameraPitch = value * Mathf.Deg2Rad;
                 if (cameraPitch > piover2 * .99f)
                     cameraPitch = piover2 * .99f;
@@ -65,6 +74,18 @@ namespace DaggerfallWorkshop.Game
             set { cameraYaw = value * Mathf.Deg2Rad; }
         }
 
+        public float PitchMaxLimit
+        {
+            get { return pitchMax; }
+            set { pitchMax = Mathf.Clamp(value, PitchMin, PitchMax); Pitch = Pitch; }
+        }
+
+        public float PitchMinLimit
+        {
+            get { return pitchMin; }
+            set { pitchMin = Mathf.Clamp(value, PitchMin, PitchMax); Pitch = Pitch; }
+        }
+
         void Start()
         {
             Init();
@@ -72,18 +93,51 @@ namespace DaggerfallWorkshop.Game
 
         void Update()
         {
+            if (forceHideCursor)
+            {
+                Cursor.lockState = CursorLockMode.Locked;
+                InputManager.Instance.CursorVisible = false;
+                return;
+            }
+
             bool applyLook = true;
+
+            // Cursor activation toggle while game is running
+            // This is distinct from cursor being left active when UI open or game is unpaused by esc
+            // When cursor activated during gameplay, player can click on world objects to activate them
+            // When cursor simply active from closing a popup, etc. a click will recapture cursor
+            // We handle activated cursor first as it takes precendence over mouse look and normal cursor recapture
+            if (!GameManager.IsGamePaused && InputManager.Instance.ActionComplete(InputManager.Actions.ActivateCursor))
+            {
+                cursorActive = !cursorActive;
+            }
+
+            // Show cursor and unlock while active
+            // While cursor is active, player can click on objects in scene using mouse similar to activating centre object
+            // Clicking on UI element of large HUD will instead operate on that UI
+            if (cursorActive)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                InputManager.Instance.CursorVisible = true;
+
+                if (Input.GetMouseButtonDown(0))
+                {
+                    // TODO: Activate object clicked by mouse - this should take precedence over activate centre object if that is also mouse0
+                }
+
+                return;
+            }
 
             // Ensure the cursor always locked when set
             if (lockCursor && enableMouseLook)
             {
                 Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
+                InputManager.Instance.CursorVisible = false;
             }
             else
             {
                 Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
+                InputManager.Instance.CursorVisible = true;
             }
 
             // Handle mouse look enable/disable
@@ -115,10 +169,22 @@ namespace DaggerfallWorkshop.Game
                 rawMouseDelta.y = -rawMouseDelta.y;
 
             // Scale sensitivity
-            float sensitivityX = sensitivity.x * sensitivityScale;
-            float sensitivityY = sensitivity.y * sensitivityScale;
+            float sensitivityX = 1.0f;
+            float sensitivityY = 1.0f;
 
-            if (enableSmoothing)
+            if (InputManager.Instance.UsingController)
+            {
+                sensitivityX = sensitivity.x * joystickSensitivityScale;
+                sensitivityY = sensitivity.y * joystickSensitivityScale;
+            }
+            else
+            {
+                sensitivityX = sensitivity.x * sensitivityScale;
+                sensitivityY = sensitivity.y * sensitivityScale;
+            }
+
+            //controller should just use smoothing
+            if (enableSmoothing || InputManager.Instance.UsingController)
             {
                 // Scale raw mouse delta against the smoothing value
                 Vector2 smoothMouseDelta = Vector2.Scale(rawMouseDelta, new Vector2(sensitivityX * smoothing.x, sensitivityY * smoothing.y));
@@ -188,6 +254,11 @@ namespace DaggerfallWorkshop.Game
             Quaternion q = Quaternion.LookRotation(forward);
             Vector3 v = q.eulerAngles;
             SetFacing(v.y, 0f);
+        }
+
+        public void ForceHideCursor(bool hideCursor)
+        {
+            this.forceHideCursor = hideCursor;
         }
     }
 }

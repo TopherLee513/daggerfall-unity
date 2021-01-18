@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -25,6 +25,8 @@ namespace DaggerfallWorkshop.Game
     [RequireComponent(typeof(EnemySenses))]
     public class EnemyAttack : MonoBehaviour
     {
+        public const float minRangedDistance = 240 * MeshReader.GlobalScale; // 6m
+        public const float maxRangedDistance = 2048 * MeshReader.GlobalScale; // 51.2m
         public float MeleeDistance = 2.25f;                // Maximum distance for melee attack
         public float ClassicMeleeDistanceVsAI = 1.5f;      // Maximum distance for melee attack vs other AI in classic AI mode
         public float MeleeTimer = 0;                       // Must be 0 for a melee attack or touch spell to be done
@@ -50,6 +52,10 @@ namespace DaggerfallWorkshop.Game
         {
             // Unable to attack if AI disabled or paralyzed
             if (GameManager.Instance.DisableAI || entityBehaviour.Entity.IsParalyzed)
+                return;
+
+            // Unable to attack when playing certain oneshot anims
+            if (mobile && mobile.IsPlayingOneShot() && mobile.OneShotPauseActionsWhilePlaying())
                 return;
 
             // Countdown to next melee attack
@@ -234,7 +240,7 @@ namespace DaggerfallWorkshop.Game
             PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
 
             // Calculate damage
-            damage = FormulaHelper.CalculateAttackDamage(entity, playerEntity, -1, 0, weapon);
+            damage = FormulaHelper.CalculateAttackDamage(entity, playerEntity, false, 0, weapon);
 
             // Break any "normal power" concealment effects on enemy
             if (entity.IsMagicallyConcealedNormalPower && damage > 0)
@@ -295,7 +301,7 @@ namespace DaggerfallWorkshop.Game
             EnemyMotor targetMotor = senses.Target.transform.GetComponent<EnemyMotor>();
 
             // Calculate damage
-            damage = FormulaHelper.CalculateAttackDamage(entity, targetEntity, -1, 0, weapon);
+            damage = FormulaHelper.CalculateAttackDamage(entity, targetEntity, false, 0, weapon);
 
             // Break any "normal power" concealment effects on enemy
             if (entity.IsMagicallyConcealedNormalPower && damage > 0)

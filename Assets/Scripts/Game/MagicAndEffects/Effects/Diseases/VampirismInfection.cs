@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -36,6 +36,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         const string spellsFilename = "SPELLS.STD";
 
         uint startingDay = 0;
+        bool warningDreamVideoScheduled = false;
         bool warningDreamVideoPlayed = false;
         bool fakeDeathVideoPlayed = false;
         int infectionRegionIndex = -1;
@@ -48,6 +49,8 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             diseaseData = new DiseaseData(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF); // Permanent no-effect disease, will manage custom lifecycle
             bypassSavingThrows = true;
         }
+
+        public override TextFile.Token[] ContractedMessageTokens => null;
 
         public int InfectionRegionIndex
         {
@@ -86,45 +89,22 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             // Record region of infection for clan at time of deployment
             // Think classic uses current region at time of turning, this will use current region at time of infection
             infectionRegionIndex = GameManager.Instance.PlayerGPS.CurrentRegionIndex;
-
-            // Capture rest and travel events for disease progression on Start
-            if (IsIncumbent)
-            {
-                DaggerfallRestWindow.OnSleepTick += ProgressDiseaseAfterSleepOrTravel;
-                DaggerfallTravelPopUp.OnPostFastTravel += ProgressDiseaseAfterSleepOrTravel;
-            }
         }
 
         public override void Resume(EntityEffectManager.EffectSaveData_v1 effectData, EntityEffectManager manager, DaggerfallEntityBehaviour caster = null)
         {
             base.Resume(effectData, manager, caster);
-
-            // Capture rest and travel events for disease progression on Resume
-            if (IsIncumbent)
-            {
-                DaggerfallRestWindow.OnSleepTick += ProgressDiseaseAfterSleepOrTravel;
-                DaggerfallTravelPopUp.OnPostFastTravel += ProgressDiseaseAfterSleepOrTravel;
-            }
         }
 
         protected override void UpdateDisease()
         {
             // Not calling base as this is a very custom disease that manages its own lifecycle
-        }
-
-        public override void End()
-        {
-            base.End();
-            if (IsIncumbent)
-            {
-                DaggerfallRestWindow.OnSleepTick -= ProgressDiseaseAfterSleepOrTravel;
-                DaggerfallTravelPopUp.OnPostFastTravel -= ProgressDiseaseAfterSleepOrTravel;
-            }
+            ProgressDisease();
         }
 
         #region Private Methods
 
-        void ProgressDiseaseAfterSleepOrTravel()
+        void ProgressDisease()
         {
             const string dreamVideoName = "ANIM0004.VID";   // Vampire dream video
             const string deathVideoName = "ANIM0012.VID";   // Death video
@@ -137,23 +117,32 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             uint currentDay = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime() / DaggerfallDateTime.MinutesPerDay;
             int daysPast = (int)(currentDay - startingDay);
 
-            // Always allow dream to play on first rest or travel event
-            // In current implementation, disease will not progress to stage 2 effect until player has experienced dream then rests or travels a second time
-            if (daysPast > 0 && !warningDreamVideoPlayed)
+            // Show dream after 1 day has passed, progress to full-blown vampirism after 3 days have passed
+            if (daysPast > 0 && !warningDreamVideoScheduled && !warningDreamVideoPlayed)
             {
                 // Play infection warning dream video
-                DaggerfallVidPlayerWindow vidPlayerWindow = new DaggerfallVidPlayerWindow(DaggerfallUI.UIManager, dreamVideoName);
+                DaggerfallVidPlayerWindow vidPlayerWindow = (DaggerfallVidPlayerWindow)
+                    UIWindowFactory.GetInstanceWithArgs(UIWindowType.VidPlayer, new object[] { DaggerfallUI.UIManager, dreamVideoName });
+                vidPlayerWindow.EndOnAnyKey = false;
                 DaggerfallUI.UIManager.PushWindow(vidPlayerWindow);
-                warningDreamVideoPlayed = true;
+                vidPlayerWindow.OnClose += WarningDreamVideoCompleted;
+                warningDreamVideoScheduled = true;
             }
             else if (daysPast > 3 && warningDreamVideoPlayed && !fakeDeathVideoPlayed)
             {
                 // Play "death" video ahead of final stage of infection
-                DaggerfallVidPlayerWindow vidPlayerWindow = new DaggerfallVidPlayerWindow(DaggerfallUI.UIManager, deathVideoName);
+                DaggerfallVidPlayerWindow vidPlayerWindow = (DaggerfallVidPlayerWindow)
+                    UIWindowFactory.GetInstanceWithArgs(UIWindowType.VidPlayer, new object[] { DaggerfallUI.UIManager, deathVideoName });
+                vidPlayerWindow.EndOnAnyKey = false;
                 DaggerfallUI.UIManager.PushWindow(vidPlayerWindow);
                 vidPlayerWindow.OnClose += DeployFullBlownVampirism;
                 fakeDeathVideoPlayed = true;
             }
+        }
+
+        private void WarningDreamVideoCompleted()
+        {
+            warningDreamVideoPlayed = true;
         }
 
         private void DeployFullBlownVampirism()
@@ -166,9 +155,6 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
             // Halt random enemy spawns for next playerEntity update so player isn't bombarded by spawned enemies after transform time
             GameManager.Instance.PlayerEntity.PreventEnemySpawns = true;
-
-            // Reset legal reputation for all regions and strip player of guild memberships
-            ResetLegalRepAndGuildMembership();
 
             // Raise game time to an evening two weeks later
             float raiseTime = (2 * DaggerfallDateTime.SecondsPerWeek) + (DaggerfallDateTime.DuskHour + 1 - DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.Hour) * 3600;
@@ -225,13 +211,6 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                 throw new System.Exception("VampirismInfection.GetRandomCemetery() could not find a cemetery in this region.");
 
             return location;
-        }
-
-        void ResetLegalRepAndGuildMembership()
-        {
-            // TODO: Reset legal reputation for all regions and remove player's guilds memberships, but keep backup of current ranks
-            // UESP indicates that rank is restored after 28 days when player re-joins a guild as a vampire
-            // https://en.uesp.net/wiki/Daggerfall:Vampirism#Reputations
         }
 
         #endregion

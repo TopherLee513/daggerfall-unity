@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -43,6 +43,17 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings
             this.mod = mod;
             data = ModSettingsData.Make(mod);
             data.LoadLocalValues();
+        }
+
+        /// <summary>
+        /// Makes an instance of mod settings from existing settings data.
+        /// </summary>
+        /// <param name="mod">Target mod.</param>
+        /// <param name="data">Settings data for target mod.</param>
+        internal ModSettings(Mod mod, ModSettingsData data)
+        {
+            this.mod = mod;
+            this.data = data;
         }
 
         #endregion
@@ -104,9 +115,9 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings
         /// </summary>
         /// <param name="section">Name of section.</param>
         /// <param name="name">Name of key.</param>
-        public Tuple<int, int> GetTupleInt(string section, string name)
+        public DaggerfallWorkshop.Utility.Tuple<int, int> GetTupleInt(string section, string name)
         {
-            return GetValue<Tuple<int, int>>(section, name);
+            return GetValue<DaggerfallWorkshop.Utility.Tuple<int, int>>(section, name);
         }
 
         /// <summary>
@@ -114,9 +125,9 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings
         /// </summary>
         /// <param name="section">Name of section.</param>
         /// <param name="name">Name of key.</param>
-        public Tuple<float, float> GetTupleFloat(string section, string name)
+        public DaggerfallWorkshop.Utility.Tuple<float, float> GetTupleFloat(string section, string name)
         {
-            return GetValue<Tuple<float, float>>(section, name);
+            return GetValue<DaggerfallWorkshop.Utility.Tuple<float, float>>(section, name);
         }
 
         /// <summary>

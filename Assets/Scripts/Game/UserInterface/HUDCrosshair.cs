@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -20,7 +20,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
     {
         const string defaultCrosshairFilename = "Crosshair";
 
-        Vector2 crosshairSize;
+        public Vector2 crosshairSize;
 
         public Texture2D CrosshairTexture;
         public float CrosshairScale = 1.0f;
@@ -40,8 +40,32 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 BackgroundTexture = CrosshairTexture;
                 Size = crosshairSize * CrosshairScale;
 
+                // Adjust crosshair position when large HUD is docked to match new viewport size
+                if (DaggerfallUI.Instance.DaggerfallHUD != null &&
+                    DaggerfallUnity.Settings.LargeHUD &&
+                    DaggerfallUnity.Settings.LargeHUDDocked)
+                {
+                    VerticalAlignment = VerticalAlignment.None;
+                    HUDLarge largeHUD = DaggerfallUI.Instance.DaggerfallHUD.LargeHUD;
+                    float y = (Screen.height - largeHUD.ScreenHeight - crosshairSize.y) / 2;
+                    Position = new Vector2(0, y);
+                }
+                else
+                {
+                    VerticalAlignment = VerticalAlignment.Middle;
+                }
+
                 base.Update();
             }
+        }
+
+        public override void Draw()
+        {
+            // Do not draw crosshair when cursor is active - i.e. player is now using mouse to point and click not crosshair target
+            if (GameManager.Instance.PlayerMouseLook.cursorActive)
+                return;
+
+            base.Draw();
         }
 
         void LoadAssets()

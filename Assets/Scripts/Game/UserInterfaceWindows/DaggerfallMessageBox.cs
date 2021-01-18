@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -9,14 +9,13 @@
 // Notes:
 //
 
-using UnityEngine;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game.UserInterface;
-using DaggerfallWorkshop.Utility.AssetInjection;
 using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Utility.AssetInjection;
+using UnityEngine;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 {
@@ -32,18 +31,23 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         Panel imagePanel = new Panel();
         Panel messagePanel = new Panel();
+        Panel scrollingPanel = new Panel();
         Panel buttonPanel = new Panel();
+        VerticalScrollBar scrollBar = new VerticalScrollBar();
         MultiFormatTextLabel label = new MultiFormatTextLabel();
         List<Button> buttons = new List<Button>();
         int buttonSpacing = 32;
         int buttonTextDistance = 4;
+        bool buttonClicked = false;
         MessageBoxButtons selectedButton = MessageBoxButtons.Cancel;
         bool clickAnywhereToClose = false;
         DaggerfallMessageBox nextMessageBox;
         int customYPos = -1;
         float presentationTime = 0;
+        bool isActivateButtonDeferred = false;
 
         KeyCode extraProceedBinding = KeyCode.None;
+        bool isNextMessageDeferred = false;
 
         /// <summary>
         /// Default message box buttons are indices into BUTTONS.RCI.
@@ -78,6 +82,52 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             Nothing,
             YesNo,
             AnchorTeleport,
+        }
+
+        private DaggerfallShortcut.Buttons ToShortcutButton(MessageBoxButtons button)
+        {
+            switch (button)
+            {
+                case MessageBoxButtons.Accept:
+                    return DaggerfallShortcut.Buttons.Accept;
+                case MessageBoxButtons.Reject:
+                    return DaggerfallShortcut.Buttons.Reject;
+                case MessageBoxButtons.Cancel:
+                    return DaggerfallShortcut.Buttons.Cancel;
+                case MessageBoxButtons.Yes:
+                    return DaggerfallShortcut.Buttons.Yes;
+                case MessageBoxButtons.No:
+                    return DaggerfallShortcut.Buttons.No;
+                case MessageBoxButtons.OK:
+                    return DaggerfallShortcut.Buttons.OK;
+                case MessageBoxButtons.Male:
+                    return DaggerfallShortcut.Buttons.Male;
+                case MessageBoxButtons.Female:
+                    return DaggerfallShortcut.Buttons.Female;
+                case MessageBoxButtons.Add:
+                    return DaggerfallShortcut.Buttons.Add;
+                case MessageBoxButtons.Delete:
+                    return DaggerfallShortcut.Buttons.Delete;
+                case MessageBoxButtons.Edit:
+                    return DaggerfallShortcut.Buttons.Edit;
+                case MessageBoxButtons.Copy:
+                    return DaggerfallShortcut.Buttons.Copy;
+                case MessageBoxButtons.Guilty:
+                    return DaggerfallShortcut.Buttons.Guilty;
+                case MessageBoxButtons.NotGuilty:
+                    return DaggerfallShortcut.Buttons.NotGuilty;
+                case MessageBoxButtons.Debate:
+                    return DaggerfallShortcut.Buttons.Debate;
+                case MessageBoxButtons.Lie:
+                    return DaggerfallShortcut.Buttons.Lie;
+                case MessageBoxButtons.Anchor:
+                    return DaggerfallShortcut.Buttons.Anchor;
+                case MessageBoxButtons.Teleport:
+                    return DaggerfallShortcut.Buttons.Teleport;
+                default:
+                    Debug.Log("No shortcut for MessageBoxButton " + button);
+                    return DaggerfallShortcut.Buttons.None;
+            }
         }
 
         public int ButtonSpacing
@@ -167,6 +217,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             DaggerfallUI.Instance.SetDaggerfallPopupStyle(DaggerfallUI.PopupStyle.Parchment, messagePanel);
             NativePanel.Components.Add(messagePanel);
 
+            scrollingPanel.HorizontalAlignment = HorizontalAlignment.Center;
+            scrollingPanel.VerticalAlignment = VerticalAlignment.Top;
+            scrollingPanel.OnMouseScrollUp += ScrollingPanel_OnMouseScrollUp;
+            scrollingPanel.OnMouseScrollDown += ScrollingPanel_OnMouseScrollDown;
+            messagePanel.Components.Add(scrollingPanel);
+
             label.HorizontalAlignment = HorizontalAlignment.Center;
             label.VerticalAlignment = VerticalAlignment.Middle;
             messagePanel.Components.Add(label);
@@ -179,6 +235,11 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             imagePanel.VerticalAlignment = VerticalAlignment.Top;
             messagePanel.Components.Add(imagePanel);
 
+            scrollBar.HorizontalAlignment = HorizontalAlignment.Right;
+            scrollBar.VerticalAlignment = VerticalAlignment.Top;
+            scrollBar.OnScroll += ScrollBar_OnScroll;
+            messagePanel.Components.Add(scrollBar);
+
             IsSetup = true;
         }
 
@@ -186,12 +247,16 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             base.OnPush();
             parentPanel.OnMouseClick += ParentPanel_OnMouseClick;
+            parentPanel.OnRightMouseClick += ParentPanel_OnMouseClick;
+            parentPanel.OnMiddleMouseClick += ParentPanel_OnMouseClick;
         }
 
         public override void OnPop()
         {
             base.OnPop();
             parentPanel.OnMouseClick -= ParentPanel_OnMouseClick;
+            parentPanel.OnRightMouseClick -= ParentPanel_OnMouseClick;
+            parentPanel.OnMiddleMouseClick -= ParentPanel_OnMouseClick;
 
             // Check if any previous message boxes need to be closed as well.
             DaggerfallMessageBox prevWindow = PreviousWindow as DaggerfallMessageBox;
@@ -225,31 +290,48 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             base.Update();
 
-            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyUp(extraProceedBinding))
+            if (!DaggerfallUI.Instance.HotkeySequenceProcessed)
             {
-                // Special handling for message boxes with buttons
-                if (buttons.Count > 0)
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || InputManager.Instance.GetKeyDown(extraProceedBinding))
+                    isNextMessageDeferred = true;
+                else if ((Input.GetKeyUp(KeyCode.Return) || Input.GetKeyUp(KeyCode.KeypadEnter) || InputManager.Instance.GetKeyUp(extraProceedBinding)) && isNextMessageDeferred)
                 {
-                    // Trigger default button if one is present
-                    Button defaultButton = GetDefaultButton();
-                    if (defaultButton != null)
-                        defaultButton.TriggerMouseClick();
+                    isNextMessageDeferred = false;
+                    // Special handling for message boxes with buttons
+                    if (buttons.Count > 0)
+                    {
+                        // Trigger default button if one is present
+                        Button defaultButton = GetDefaultButton();
+                        if (defaultButton != null)
+                            defaultButton.TriggerMouseClick();
 
-                    // Exit here if no other message boxes queued
-                    // Most of the time this won't be the case and we don't want message boxes waiting for input to close prematurely
-                    if (nextMessageBox == null)
-                        return;
+                        // Exit here if no other message boxes queued
+                        // Most of the time this won't be the case and we don't want message boxes waiting for input to close prematurely
+                        if (nextMessageBox == null)
+                            return;
+                    }
+                    // if there is a nested next message box show it
+                    if (this.nextMessageBox != null)
+                    {
+                        nextMessageBox.Show();
+                    }
+                    else // or close window if there is no next message box to show
+                    {
+                        CloseWindow();
+                    }
                 }
-
+                else if (buttonClicked)
+                {
+                    // if there is a nested next message box show it
+                    if (nextMessageBox != null)
+                        nextMessageBox.Show();
+                }
+            }
+            else if (buttonClicked)
+            {
                 // if there is a nested next message box show it
-                if (this.nextMessageBox != null)
-                {
+                if (nextMessageBox != null)
                     nextMessageBox.Show();
-                }
-                else // or close window if there is no next message box to show
-                {
-                    CloseWindow();                    
-                }
             }
         }
 
@@ -274,6 +356,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             button.Tag = messageBoxButton;
             button.OnMouseClick += ButtonClickHandler;
             button.DefaultButton = defaultButton;
+            button.Hotkey = DaggerfallShortcut.GetBinding(ToShortcutButton(messageBoxButton));
+            button.OnKeyboardEvent += ButtonKeyboardEvent;
             buttons.Add(button);
 
             // Once a button has been added the owner is expecting some kind of input from player
@@ -355,14 +439,50 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             label.HighlightColor = highlightColor;
         }
 
+        /// <summary>
+        /// Enables vertical scrolling of message panel.
+        /// Width is determined by widest text line as with non-scrolling message box.
+        /// Must call this before setting text.
+        /// </summary>
+        /// <param name="height">Capped height of visible area of message panel. Anything past this size will become scrollable.</param>
+        public void EnableVerticalScrolling(int height)
+        {
+            if (height > 0)
+            {
+                label.MaxTextHeight = height;
+                UpdatePanelSizes();
+            }
+        }
+
         #endregion
 
         #region Private Methods
 
-        void ButtonClickHandler(BaseScreenComponent sender, Vector2 position)
+        private void ActivateButton(BaseScreenComponent sender)
         {
+            buttonClicked = true;
             selectedButton = (MessageBoxButtons)sender.Tag;
             RaiseOnButtonClickEvent(this, selectedButton);
+        }
+
+        void ButtonClickHandler(BaseScreenComponent sender, Vector2 position)
+        {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+            ActivateButton(sender);
+        }
+
+        void ButtonKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+            {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+                isActivateButtonDeferred = true;
+            }
+            else if (keyboardEvent.type == EventType.KeyUp && isActivateButtonDeferred)
+            {
+                isActivateButtonDeferred = false;
+                ActivateButton(sender);
+            }
         }
 
         void UpdatePanelSizes()
@@ -389,9 +509,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             buttonPanel.Size = finalSize;
 
             // Position buttons to be buttonTextDistance pixels below the repositioned text
+            // HACK: Lower vertical position if only a single button so that it aligns like two or more buttons
             if (buttons.Count > 0)
             {
                 float buttonY = messagePanel.Size.y - ((messagePanel.Size.y - label.Size.y) / 2) - buttonPanel.Size.y - messagePanel.BottomMargin;
+                if (buttons.Count == 1)
+                    buttonY += 11;
                 buttonPanel.Position = new Vector2(buttonPanel.Position.x, buttonY);
             }
 
@@ -415,6 +538,40 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 height = minimum;
 
             messagePanel.Size = new Vector2(width, height);
+
+            if (label.MaxTextHeight > 0 && label.ActualTextHeight > label.MaxTextHeight)
+            {
+                scrollingPanel.Size = new Vector2(label.Size.x, GetScrollingPanelHeight());
+                scrollBar.Enabled = true;
+                scrollBar.Size = new Vector2(8, GetScrollingPanelHeight());
+                scrollBar.TotalUnits = label.ActualTextHeight + 1;
+                scrollBar.DisplayUnits = GetScrollingPanelHeight();
+                StartClippingScrollingText();
+            }
+            else
+            {
+                scrollBar.Enabled = false;
+                StopClippingScrollingText();
+            }
+        }
+
+        void StartClippingScrollingText()
+        {
+            label.RestrictedRenderAreaCoordinateType = BaseScreenComponent.RestrictedRenderArea_CoordinateType.CustomParent;
+            label.RestrictedRenderAreaCustomParent = scrollingPanel;
+            label.UpdateRestrictedRenderArea();
+        }
+
+        void StopClippingScrollingText()
+        {
+            label.RestrictedRenderAreaCoordinateType = BaseScreenComponent.RestrictedRenderArea_CoordinateType.None;
+            label.RestrictedRenderAreaCustomParent = null;
+            label.UpdateRestrictedRenderArea();
+        }
+
+        int GetScrollingPanelHeight()
+        {
+            return label.MaxTextHeight + 9;
         }
 
         void SetupBox(TextFile.Token[] tokens, CommonMessageBoxButtons buttons, IMacroContextProvider mcp = null)
@@ -461,6 +618,10 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             if (Time.realtimeSinceStartup - presentationTime < minTimePresented)
                 return;
 
+            // Filter out (mouse) fighting activity
+            if (InputManager.Instance.GetKey(InputManager.Instance.GetBinding(InputManager.Actions.SwingWeapon)))
+                return;
+
             if (uiManager.TopWindow == this)
             {
                 if (nextMessageBox != null)
@@ -468,6 +629,25 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 else if (clickAnywhereToClose)
                     CloseWindow();
             }
+        }
+
+        int lastScrollIndex = 0;
+        int currentScrollIndex = 0;
+        private void ScrollBar_OnScroll()
+        {
+            lastScrollIndex = currentScrollIndex;
+            currentScrollIndex = scrollBar.ScrollIndex;
+            label.ChangeScrollPosition(lastScrollIndex - currentScrollIndex);
+        }
+
+        private void ScrollingPanel_OnMouseScrollUp(BaseScreenComponent sender)
+        {
+            scrollBar.ScrollIndex -= 6;
+        }
+
+        private void ScrollingPanel_OnMouseScrollDown(BaseScreenComponent sender)
+        {
+            scrollBar.ScrollIndex += 6;
         }
 
         #endregion

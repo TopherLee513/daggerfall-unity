@@ -19,10 +19,10 @@ namespace DaggerfallWorkshop.Game
     {
         #region Fields
 
-        bool isCrouching = false;
+        const float walkingRayDistance = 1.0f;
+        const float ridingRayDistance = 2.0f;
 
-        // TODO: Placeholder integration of horse & cart riding - using same speed for cart to simplify PlayerMotor integration
-        // and avoid adding any references to TransportManager.
+        bool isCrouching = false;
 
         bool isRiding = false;
 
@@ -47,13 +47,13 @@ namespace DaggerfallWorkshop.Game
 
         private ClimbingMotor climbingMotor;
         private RappelMotor rappelMotor;
-        private HangingMotor hangingMotor;
+        //private HangingMotor hangingMotor;
         private PlayerHeightChanger heightChanger;
         private PlayerSpeedChanger speedChanger;
         private FrictionMotor frictionMotor;
         private AcrobatMotor acrobatMotor;
-        private PlayerGroundMotor groundMotor;
         private PlayerEnterExit playerEnterExit;
+        private PlayerGroundMotor groundMotor;
         private PlayerMoveScanner playerScanner;
 
         private CollisionFlags collisionFlags = 0;
@@ -63,6 +63,10 @@ namespace DaggerfallWorkshop.Game
         LevitateMotor levitateMotor;
         float freezeMotor = 0;
         OnExteriorWaterMethod onExteriorWaterMethod = OnExteriorWaterMethod.None;
+        bool onExteriorPathMethod = false;
+        bool onExteriorStaticGeometryMethod = false;
+
+        float groundedTime;
 
         #endregion
 
@@ -91,6 +95,11 @@ namespace DaggerfallWorkshop.Game
             get { return grounded; }
         }
 
+        public float GroundedTime
+        {
+            get { return groundedTime; }
+        }
+
         public float Speed
         {
             get { return speed; }
@@ -98,7 +107,7 @@ namespace DaggerfallWorkshop.Game
 
         public bool IsRunning
         {
-            get { return speed == speedChanger.GetRunSpeed(speedChanger.GetBaseSpeed()); }
+            get { return speedChanger.isRunning; }
         }
 
         public bool IsStandingStill
@@ -222,6 +231,22 @@ namespace DaggerfallWorkshop.Game
             get { return onExteriorWaterMethod; }
         }
 
+        /// <summary>
+        /// The method by which player is standing on outdoor path.
+        /// </summary>
+        public bool OnExteriorPath
+        {
+            get { return onExteriorPathMethod; }
+        }
+
+        /// <summary>
+        /// The method by which player is standing on outdoor path.
+        /// </summary>
+        public bool OnExteriorStaticGeometry
+        {
+            get { return onExteriorStaticGeometryMethod; }
+        }
+
         #endregion
 
         #region Event Handlers
@@ -240,7 +265,7 @@ namespace DaggerfallWorkshop.Game
             playerScanner = GetComponent<PlayerMoveScanner>();
             playerEnterExit = GameManager.Instance.PlayerEnterExit;
             rappelMotor = GetComponent<RappelMotor>();
-            hangingMotor = GetComponent<HangingMotor>();
+            //hangingMotor = GetComponent<HangingMotor>();
 
             // Allow for resetting specific player state on new game or when game starts loading
             SaveLoadManager.OnStartLoad += SaveLoadManager_OnStartLoad;
@@ -251,6 +276,12 @@ namespace DaggerfallWorkshop.Game
         {
             // Check if on a solid surface
             grounded = (collisionFlags & CollisionFlags.Below) != 0;
+
+            // Time how long player has been grounded
+            if (grounded)
+                groundedTime += Time.deltaTime;
+            else
+                groundedTime = 0;
 
             // Clear movement
             if (cancelMovement)
@@ -276,15 +307,20 @@ namespace DaggerfallWorkshop.Game
 
             playerScanner.FindHeadHit(new Ray(controller.transform.position, Vector3.up));
             playerScanner.SetHitSomethingInFront();
-            // Check if should hang
-            hangingMotor.HangingChecks();
-            // Handle Rappeling
-            rappelMotor.RappelChecks();
-            // Handle climbing
-            climbingMotor.ClimbingCheck();
+
+            // Can only engage climbing/rappel mode when on foot
+            if (GameManager.Instance.TransportManager.IsOnFoot)
+            {
+                // Check if should hang
+                //hangingMotor.HangingChecks();
+                // Handle Rappeling
+                rappelMotor.RappelChecks();
+                // Handle climbing
+                climbingMotor.ClimbingCheck();
+            }
 
             // Do nothing if player levitating/swimming or climbing - replacement motor will take over movement for levitating/swimming
-            if (levitateMotor && (levitateMotor.IsLevitating || levitateMotor.IsSwimming) || climbingMotor.IsClimbing || hangingMotor.IsHanging)
+            if (levitateMotor && (levitateMotor.IsLevitating || levitateMotor.IsSwimming) || climbingMotor.IsClimbing /*|| hangingMotor.IsHanging*/)
             {
                 moveDirection = Vector3.zero;
                 return;
@@ -295,6 +331,8 @@ namespace DaggerfallWorkshop.Game
             {   // True in terms of the player having their feet on solid surface.
                 grounded = true;
             }
+
+            UpdateSpeed();
 
             if (grounded)
             {
@@ -315,7 +353,7 @@ namespace DaggerfallWorkshop.Game
             }
 
             playerScanner.FindStep(moveDirection);
-            
+
             acrobatMotor.ApplyGravity(ref moveDirection);
 
             acrobatMotor.HitHead(ref moveDirection);
@@ -327,6 +365,8 @@ namespace DaggerfallWorkshop.Game
         {
             // Update on water check
             onExteriorWaterMethod = GetOnExteriorWaterMethod();
+            onExteriorPathMethod = GetOnExteriorPathMethod();
+            onExteriorStaticGeometryMethod = GetOnExteriorStaticGeometryMethod();
 
             heightChanger.DecideHeightAction();
 
@@ -335,12 +375,17 @@ namespace DaggerfallWorkshop.Game
             if (levitateMotor && levitateMotor.IsLevitating)
                 return;
 
-            speed = speedChanger.GetBaseSpeed();
-            speedChanger.HandleInputSpeedAdjustment(ref speed);
-            if (playerEnterExit.IsPlayerSwimming && !GameManager.Instance.PlayerEntity.IsWaterWalking)
-                speed = speedChanger.GetSwimSpeed(speed);
+            speedChanger.CaptureInputSpeedAdjustment();
 
             UpdateSmoothFollower();
+        }
+
+        private void UpdateSpeed()
+        {
+            speed = speedChanger.GetBaseSpeed();
+            speedChanger.ApplyInputSpeedAdjustment(ref speed);
+            if (playerEnterExit.IsPlayerSwimming && !GameManager.Instance.PlayerEntity.IsWaterWalking)
+                speed = speedChanger.GetSwimSpeed(speed);
         }
 
         // Store point that we're in contact with for use in FixedUpdate if needed
@@ -418,17 +463,19 @@ namespace DaggerfallWorkshop.Game
             if (smoothFollower != null && controller != null)
             {
                 float distanceMoved = Vector3.Distance(smoothFollowerPrevWorldPos, smoothFollower.position);        // Assuming the follower is a child of this motor transform we can get the distance travelled.
-                float maxPossibleDistanceByMotorVelocity = controller.velocity.magnitude * 2.0f * Time.deltaTime;   // Theoretically the max distance the motor can carry the player with a generous margin.
-                float speedThreshold = speedChanger.GetRunSpeed(speed) * Time.deltaTime;                                         // Without question any distance travelled less than the running speed is legal.
+                float distanceThreshold = speedChanger.GetRunSpeed(speed) * Time.deltaTime;         // Without question any distance travelled less than the running speed is legal.
+                float motorVelocity = controller.velocity.magnitude / Time.fixedDeltaTime;
+                float maxPossibleDistanceByMotorVelocity = motorVelocity * Time.deltaTime * 2.0f;   // Theoretically the max distance the motor can carry the player with a generous margin.
 
                 // NOTE: Maybe the min distance should also include the height different between crouching / standing.
-                if (distanceMoved > speedThreshold && distanceMoved > maxPossibleDistanceByMotorVelocity)
+                if (distanceMoved > distanceThreshold && distanceMoved > maxPossibleDistanceByMotorVelocity)
                 {
                     smoothFollowerReset = true;
                 }
 
                 if (smoothFollowerReset)
                 {
+                    // Debug.Log("smooth follower reset");
                     smoothFollowerPrevWorldPos = transform.position;
                     smoothFollowerReset = false;
                 }
@@ -446,6 +493,83 @@ namespace DaggerfallWorkshop.Game
         }
 
         /// <summary>
+        /// Check if player is really standing on an outdoor tile, not just positioned above one.
+        /// For example when player is on their ship they are standing above water but should not be swimming.
+        /// Same when player is levitating above water they should not hear splash sounds.
+        /// </summary>
+        /// <returns>True if player is physically in range of an outdoor tile.</returns>
+        bool GetOnExteriorGroundMethod()
+        {
+            float rayDistance = (GameManager.Instance.TransportManager.IsOnFoot) ? walkingRayDistance : ridingRayDistance;
+
+            // Must be outside and actually be standing on a terrain object not some other object (e.g. player ship)
+            RaycastHit hit;
+            if (GameManager.Instance.PlayerEnterExit.IsPlayerInside || !Physics.Raycast(transform.position, Vector3.down, out hit, rayDistance * 2))
+            {
+                return false;
+            }
+            else
+            {
+                DaggerfallTerrain terrain = hit.transform.GetComponent<DaggerfallTerrain>();
+                if (!terrain)
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Check if player is really standing on an outdoor StaticGeometry object, not just positioned above one.
+        /// For example when player is on their ship they are standing above water but should not be swimming.
+        /// Same when player is levitating above water they should not hear splash sounds.
+        /// </summary>
+        /// <returns>True if player is physically in range of a StaticGeometry object.</returns>
+        bool GetOnExteriorStaticGeometryMethod()
+        {
+            float rayDistance = (GameManager.Instance.TransportManager.IsOnFoot) ? walkingRayDistance : ridingRayDistance;
+
+            // Must be outside and actually be standing on a terrain object not some other object (e.g. player ship)
+            RaycastHit hit;
+            if (GameManager.Instance.PlayerEnterExit.IsPlayerInside || !Physics.Raycast(transform.position, Vector3.down, out hit, rayDistance * 2))
+            {
+                return false;
+            }
+            else
+            {
+                return hit.collider.tag.Equals("StaticGeometry");
+            }
+        }
+
+        /// <summary>
+        /// Check if player is really standing on an shallow water tile, determined by if the water design takes up the majority of the texture.
+        /// </summary>
+        /// <returns>True if player is is on a shallow water tile.</returns>
+        bool OnShallowWaterTile()
+        {
+            return GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 5
+                || GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 6
+                || GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 8
+                || GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 20
+                || GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 21
+                || GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 23
+                || GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 30
+                || GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 31
+                || (GameManager.Instance.StreamingWorld.PlayerTileMapIndex >= 33 && GameManager.Instance.StreamingWorld.PlayerTileMapIndex <= 36)
+                || GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 49;
+        }
+
+        /// <summary>
+        /// Check if player is really standing on a path tile.
+        /// </summary>
+        /// <returns>True if player is is on a path tile.</returns>
+        bool OnPathTile()
+        {
+            return GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 46
+                || GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 47
+                || GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 55;
+        }
+
+        /// <summary>
         /// Check if player is really standing on an outdoor water tile, not just positioned above one.
         /// For example when player is on their ship they are standing above water but should not be swimming.
         /// Same when player is levitating above water they should not hear splash sounds.
@@ -453,33 +577,25 @@ namespace DaggerfallWorkshop.Game
         /// <returns>True if player is physically in range of an outdoor water tile.</returns>
         OnExteriorWaterMethod GetOnExteriorWaterMethod()
         {
-            const float walkingRayDistance = 1.0f;
-            const float ridingRayDistance = 2.0f;
-
-            float rayDistance = (GameManager.Instance.TransportManager.IsOnFoot) ? walkingRayDistance : ridingRayDistance;
-
-            // Must be outside and over a water tile
-            if (GameManager.Instance.PlayerEnterExit.IsPlayerInside || GameManager.Instance.StreamingWorld.PlayerTileMapIndex != 0)
-                return OnExteriorWaterMethod.None;
-
-            // Must actually be standing on a terrain object not some other object (e.g. player ship)
-            RaycastHit hit;
-            if (!Physics.Raycast(transform.position, Vector3.down, out hit, rayDistance))
-            {
-                return OnExteriorWaterMethod.None;
-            }
-            else
-            {
-                DaggerfallTerrain terrain = hit.transform.GetComponent<DaggerfallTerrain>();
-                if (!terrain)
-                    return OnExteriorWaterMethod.None;
-            }
+            bool onShallowWaterTile = OnShallowWaterTile();
+            if (!GetOnExteriorGroundMethod()
+                || (GameManager.Instance.StreamingWorld.PlayerTileMapIndex != 0 && !onShallowWaterTile))
+               return OnExteriorWaterMethod.None;
 
             // Handle swimming/waterwalking
-            if (GameManager.Instance.PlayerEntity.IsWaterWalking)
+            if (GameManager.Instance.PlayerEntity.IsWaterWalking || onShallowWaterTile)
                 return OnExteriorWaterMethod.WaterWalking;
             else
                 return OnExteriorWaterMethod.Swimming;
+        }
+
+        /// <summary>
+        /// Check if player is really standing on an outdoor path tile, not just positioned above one.
+        /// </summary>
+        /// <returns>True if player is physically in range of an outdoor path tile.</returns>
+        bool GetOnExteriorPathMethod()
+        {
+            return GetOnExteriorGroundMethod() && OnPathTile();
         }
 
         #endregion

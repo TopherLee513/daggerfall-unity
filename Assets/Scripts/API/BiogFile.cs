@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -16,6 +16,7 @@ using System.IO;
 using System.Collections.Generic;
 using DaggerfallWorkshop.Game.Entity;
 using UnityEngine;
+using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Items;
 using DaggerfallWorkshop.Game.Player;
 using DaggerfallWorkshop.Utility;
@@ -176,6 +177,8 @@ namespace DaggerfallConnect.Arena2
             }
             #endregion
 
+            TextFile.Token lastToken = new TextFile.Token();
+            GameManager.Instance.PlayerEntity.BirthRaceTemplate = characterDocument.raceTemplate; // Need correct race set when parsing %ra macro
             List<string> backStory = new List<string>();
             TextFile.Token[] tokens = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(tokensStart + classIndex);
             MacroHelper.ExpandMacros(ref tokens, (IMacroContextProvider)this);
@@ -185,6 +188,12 @@ namespace DaggerfallConnect.Arena2
                 {
                     backStory.Add(token.text);
                 }
+                else if (token.formatting == TextFile.Formatting.JustifyLeft)
+                {
+                    if (lastToken.formatting == TextFile.Formatting.JustifyLeft)
+                        backStory.Add("\n");
+                }
+                lastToken = token;
             }
 
             return backStory;
@@ -405,6 +414,9 @@ namespace DaggerfallConnect.Arena2
 
         public static void ApplyEffects(List<string> effects, PlayerEntity playerEntity)
         {
+            if (effects == null)
+                return;
+
             foreach (string effect in effects)
             {
                 ApplyPlayerEffect(playerEntity, effect);

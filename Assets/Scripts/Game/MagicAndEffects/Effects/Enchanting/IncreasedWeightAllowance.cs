@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -25,11 +25,12 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         public override void SetProperties()
         {
             properties.Key = EffectKey;
-            properties.GroupName = TextManager.Instance.GetText(textDatabase, EffectKey);
             properties.ShowSpellIcon = false;
             properties.AllowedCraftingStations = MagicCraftingStations.ItemMaker;
             properties.EnchantmentPayloadFlags = EnchantmentPayloadFlags.Held;
         }
+
+        public override string GroupName => TextManager.Instance.GetLocalizedText(EffectKey);
 
         /// <summary>
         /// Outputs all variant settings for this enchantment.
@@ -47,8 +48,8 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                     EffectKey = EffectKey,
                     ClassicType = EnchantmentTypes.IncreasedWeightAllowance,
                     ClassicParam = (short)i,
-                    PrimaryDisplayName = properties.GroupName,
-                    SecondaryDisplayName = TextManager.Instance.GetText(textDatabase, classicTextKeys[i]),
+                    PrimaryDisplayName = GroupName,
+                    SecondaryDisplayName = TextManager.Instance.GetLocalizedText(classicTextKeys[i]),
                     EnchantCost = classicParamCosts[i],
                 };
 

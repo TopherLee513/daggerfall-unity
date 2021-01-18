@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -73,7 +73,6 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         Texture2D baseTexture;
         const string baseTextureName = "MASK00I0.IMG";
         const int alternateAlphaIndex = 12;
-        const string textDatabase = "DaggerfallUI";
 
         #endregion
 
@@ -128,7 +127,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             ClearCauldron();
         }
 
-        void Refresh()
+        protected virtual void Refresh()
         {
             // Update labels
             goldLabel.Text = GameManager.Instance.PlayerEntity.GetGoldAmount().ToString();
@@ -169,14 +168,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         #endregion
 
-        #region Private Methods
+        #region Protected Methods
 
-        void LoadTextures()
+        protected virtual void LoadTextures()
         {
             baseTexture = ImageReader.GetTexture(baseTextureName, 0, 0, true, alternateAlphaIndex);
         }
 
-        void SetupButtons()
+        protected virtual void SetupButtons()
         {
             // Recipes button
             recipesButton = DaggerfallUI.AddButton(recipesButtonRect, NativePanel);
@@ -191,14 +190,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             exitButton.OnMouseClick += ExitButton_OnMouseClick;
         }
 
-        void SetupLabels()
+        protected virtual void SetupLabels()
         {
             nameLabel = DaggerfallUI.AddDefaultShadowedTextLabel(new Vector2(33, 185), NativePanel);
             //costLabel = DaggerfallUI.AddDefaultShadowedTextLabel(new Vector2(174, 185), NativePanel);
             goldLabel = DaggerfallUI.AddDefaultShadowedTextLabel(new Vector2(237, 185), NativePanel);
         }
 
-        void SetupItemListScrollers()
+        protected virtual void SetupItemListScrollers()
         {
             // Create misc text label template
             TextLabel miscLabelTemplate = new TextLabel(DaggerfallUI.Instance.Font3)
@@ -229,12 +228,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             cauldronListScroller.OnItemClick += CauldronListScroller_OnItemClick;
         }
 
-        string ItemLabelTextHandler(DaggerfallUnityItem item)
+        protected virtual string ItemLabelTextHandler(DaggerfallUnityItem item)
         {
             return item.ItemName.ToUpper();
         }
 
-        void AddToCauldron(DaggerfallUnityItem item)
+        protected virtual void AddToCauldron(DaggerfallUnityItem item)
         {
             if (cauldron.Count < 8)
             {
@@ -256,7 +255,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
         }
 
-        void RemoveFromCauldron(DaggerfallUnityItem item)
+        protected virtual void RemoveFromCauldron(DaggerfallUnityItem item)
         {
             nameLabel.Text = "";
             cauldron.Remove(item);
@@ -277,14 +276,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             cauldronListScroller.Items = cauldron;
         }
 
-        void ClearCauldron()
+        protected virtual void ClearCauldron()
         {
             // Remove all ingredients from cauldron to restore correct stack sizes
             while (cauldron.Count > 0)
                 RemoveFromCauldron(cauldron[0]);
         }
 
-        void AddRecipeToCauldron(int index, string recipeName)
+        protected virtual void AddRecipeToCauldron(int index, string recipeName)
         {
             PotionRecipe recipe = recipes[index];
             Dictionary<int, DaggerfallUnityItem> recipeIngreds = new Dictionary<int, DaggerfallUnityItem>();
@@ -304,7 +303,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // If player doesn't have all the required ingredients, display message else move ingredients into cauldron.
             if (recipeIngreds.ContainsValue(null))
             {
-                DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "reqIngredients"));
+                DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("reqIngredients"));
             }
             else
             {
@@ -315,7 +314,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
         }
 
-        void MixCauldron()
+        protected virtual void MixCauldron()
         {
             // Check recipes and create appropriate potion in player inventory if a match found
             List<int> cauldronIngredients = new List<int>(cauldron.Count);
@@ -329,14 +328,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             {
                 Debug.LogFormat("Potion matched: {0}", potionRecipe.DisplayName);
                 GameManager.Instance.PlayerEntity.Items.AddItem(ItemBuilder.CreatePotion(recipeKey));
-                DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "potionMixed"));
+                DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("potionMixed"));
                 DaggerfallUI.Instance.PlayOneShot(SoundClips.MakePotion);
             }
             else
             {
                 // Changed from classic, don't create useless 'Unknown Powers' potions.
                 //GameManager.Instance.PlayerEntity.Items.AddItem(ItemBuilder.CreatePotion(0));
-                DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "potionFailed"));
+                DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("potionFailed"));
             }
 
             // Remove item from player inventory unless a stack remains.
@@ -382,7 +381,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             if (recipes.Count > 0)
                 uiManager.PushWindow(recipePicker);
             else
-                DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "noRecipes"));
+                DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("noRecipes"));
         }
 
         public void RecipePicker_OnItemPicked(int index, string recipeName)
@@ -403,6 +402,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void ExitButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             CloseWindow();
         }
 

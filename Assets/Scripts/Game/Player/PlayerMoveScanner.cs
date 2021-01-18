@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -69,7 +69,7 @@ namespace DaggerfallWorkshop.Game
             YZCounterClockwise
         }
         CharacterController controller;
-        HangingMotor hangingMotor;
+        //HangingMotor hangingMotor;
         ClimbingMotor climbingMotor;
         AcrobatMotor acrobatMotor;
         //PlayerMotor playerMotor;
@@ -109,7 +109,7 @@ namespace DaggerfallWorkshop.Game
             controller = GetComponent<CharacterController>();
             acrobatMotor = GetComponent<AcrobatMotor>();
             //playerMotor = GetComponent<PlayerMotor>();
-            hangingMotor = GetComponent<HangingMotor>();
+            //hangingMotor = GetComponent<HangingMotor>();
             climbingMotor = GetComponent<ClimbingMotor>();
             HeadHitRadius = controller.radius * 0.85f;
         }
@@ -201,7 +201,7 @@ namespace DaggerfallWorkshop.Game
                 AboveBehindWall = surf;
             else if (turnDirection == RotationDirection.YZCounterClockwise)
             {
-                if (hangingMotor.IsHanging && turns == 1)
+                if (/*hangingMotor.IsHanging &&*/ turns == 1)
                     FrontWall = surf;
                 else if (turns == 2 && surf.grabDirection.y < 0.2f)
                     BelowBehindWall = surf;
@@ -315,6 +315,15 @@ namespace DaggerfallWorkshop.Game
                 inFrontDirection = controller.transform.forward;
                
             HitSomethingInFront = (Physics.Raycast(controller.transform.position, inFrontDirection, out hit, controller.radius + 0.1f));
+        }
+
+        public void ResetAdjacentSurfaces()
+        {
+            AboveBehindWall = null;
+            FrontWall = null;
+            SideWall = null;
+            BelowBehindWall = null;
+            FrontUnderCeiling = null;
         }
     }
 }

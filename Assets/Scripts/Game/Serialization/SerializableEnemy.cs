@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -120,7 +120,10 @@ namespace DaggerfallWorkshop.Game.Serialization
             data.instancedEffectBundles = GetComponent<EntityEffectManager>().GetInstancedBundlesSaveData();
             data.alliedToPlayer = mobileEnemy.Summary.Enemy.Team == MobileTeams.PlayerAlly;
             data.questFoeSpellQueueIndex = entity.QuestFoeSpellQueueIndex;
+            data.questFoeItemQueueIndex = entity.QuestFoeItemQueueIndex;
             data.wabbajackActive = entity.WabbajackActive;
+            data.team = (int)entity.Team + 1;
+            data.specialTransformationCompleted = mobileEnemy.Summary.specialTransformationCompleted;
 
             // Add quest resource data if present
             QuestResourceBehaviour questResourceBehaviour = GetComponent<QuestResourceBehaviour>();
@@ -145,6 +148,7 @@ namespace DaggerfallWorkshop.Game.Serialization
             EnemySenses senses = enemy.GetComponent<EnemySenses>();
             EnemyMotor motor = enemy.GetComponent<EnemyMotor>();
             EnemyEntity entity = entityBehaviour.Entity as EnemyEntity;
+            DaggerfallMobileUnit mobileEnemy = enemy.GetComponentInChildren<DaggerfallMobileUnit>();
 
             // Restore enemy career or class if different
             if (entity == null || entity.EntityType != data.entityType || entity.CareerIndex != data.careerIndex)
@@ -164,6 +168,7 @@ namespace DaggerfallWorkshop.Game.Serialization
             entityBehaviour.gameObject.name = data.gameObjectName;
             enemy.transform.rotation = data.currentRotation;
             entity.QuestFoeSpellQueueIndex = data.questFoeSpellQueueIndex;
+            entity.QuestFoeItemQueueIndex = data.questFoeItemQueueIndex;
             entity.WabbajackActive = data.wabbajackActive;
             entity.Items.DeserializeItems(data.items);
             entity.ItemEquipTable.DeserializeEquipTable(data.equipTable, entity.Items);
@@ -171,6 +176,9 @@ namespace DaggerfallWorkshop.Game.Serialization
             entity.SetHealth(data.currentHealth, true);
             entity.SetFatigue(data.currentFatigue, true);
             entity.SetMagicka(data.currentMagicka, true);
+            int team = data.team;
+            if (team > 0)   // Added 1 to made backwards compatible. 0 = no team saved
+                entity.Team = (MobileTeams)(team - 1);
             motor.IsHostile = data.isHostile;
             senses.HasEncounteredPlayer = data.hasEncounteredPlayer;
 
@@ -212,6 +220,12 @@ namespace DaggerfallWorkshop.Game.Serialization
 
             // Restore instanced effect bundles
             GetComponent<EntityEffectManager>().RestoreInstancedBundleSaveData(data.instancedEffectBundles);
+
+            // Restore special transformation state if completed
+            if (data.specialTransformationCompleted && mobileEnemy)
+            {
+                mobileEnemy.SetSpecialTransformationCompleted();
+            }
 
             // Resume entity
             entity.Quiesce = false;

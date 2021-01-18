@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -51,12 +51,12 @@ namespace DaggerfallWorkshop.Game
         private LevitateMotor levitateMotor;
         private ClimbingMotor climbingMotor;
         private Camera mainCamera;
-        private const float controllerStandingHeight = 1.8f;
-        private const float controllerCrouchHeight = 0.9f;
-        private const float controllerRideHeight = 2.6f;   // Height of a horse plus seated rider. (1.6m + 1m)
-        private const float controllerSwimHeight = 0.30f;
-        private const float controllerSwimHorseDisplacement = 0.30f; // amount added to swim height if on horse
-        private const float eyeHeight = 0.09f;         // Eye height is 9cm below top of capsule.
+        public const float controllerStandingHeight = 1.8f;
+        public const float controllerCrouchHeight = 0.9f;
+        public const float controllerRideHeight = 2.6f;   // Height of a horse plus seated rider. (1.6m + 1m)
+        public const float controllerSwimHeight = 0.30f;
+        public const float controllerSwimHorseDisplacement = 0.30f; // amount added to swim height if on horse
+        public const float eyeHeight = 0.09f;         // Eye height is 9cm below top of capsule.
         private float targetCamLevel;
         private float prevCamLevel;
         private float camCrouchLevel;
@@ -128,7 +128,7 @@ namespace DaggerfallWorkshop.Game
             bool swimming = levitateMotor.IsSwimming;
             bool crouching = playerMotor.IsCrouching;
             bool riding = playerMotor.IsRiding;
-            bool pressedCrouch = InputManager.Instance.ActionComplete(InputManager.Actions.Crouch);
+            bool pressedCrouch = InputManager.Instance.ActionStarted(InputManager.Actions.Crouch);
             bool climbing = climbingMotor.IsClimbing;
             bool levitating = playerMotor.IsLevitating;
             //timerMax = timerSlow;

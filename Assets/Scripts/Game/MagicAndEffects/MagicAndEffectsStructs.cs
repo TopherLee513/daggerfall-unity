@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -24,11 +24,6 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
     {
         public string Key;                                          // Unique key to identify effect
         public int ClassicKey;                                      // Unique key only for matching classic effect group/subgroup
-        public string GroupName;                                    // Group display name (used by crafting stations)
-        public string SubGroupName;                                 // SubGroup display name (used by crafting stations)
-        public string DisplayName;                                  // Display name (used by crafting stations)
-        public TextFile.Token[] SpellMakerDescription;              // Description for spellmaker
-        public TextFile.Token[] SpellBookDescription;               // Description for spellbook
         public bool ShowSpellIcon;                                  // True to make spell show icon on player HUD
         public bool SupportDuration;                                // Uses duration
         public bool SupportChance;                                  // Uses chance
@@ -149,6 +144,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         public BundleTypes BundleType;
         public TargetTypes TargetType;
         public ElementTypes ElementType;
+        public BundleRuntimeFlags RuntimeFlags;
         public string Name;
         public int IconIndex;
         public SpellIcon Icon;

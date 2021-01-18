@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -19,6 +19,8 @@ using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Questing;
 using DaggerfallWorkshop.Game.Utility;
 using DaggerfallWorkshop.Game.MagicAndEffects;
+using DaggerfallWorkshop.Game.Formulas;
+using UnityEngine;
 
 namespace DaggerfallWorkshop.Game.Items
 {
@@ -49,6 +51,7 @@ namespace DaggerfallWorkshop.Game.Items
         public int stackCount = 1;
         public Poisons poisonType = Poisons.None;
         public uint timeHealthLeechLastUsed;
+        public uint timeEffectsLastRerolled;
 
         // Private item fields
         int playerTextureArchive;
@@ -137,7 +140,7 @@ namespace DaggerfallWorkshop.Game.Items
         /// <summary>
         /// Gets inventory texture archive.
         /// </summary>
-        public int InventoryTextureArchive
+        public virtual int InventoryTextureArchive
         {
             get { return GetInventoryTextureArchive(); }
         }
@@ -145,7 +148,7 @@ namespace DaggerfallWorkshop.Game.Items
         /// <summary>
         /// Gets inventory texture record.
         /// </summary>
-        public int InventoryTextureRecord
+        public virtual int InventoryTextureRecord
         {
             get { return GetInventoryTextureRecord(); }
         }
@@ -164,7 +167,7 @@ namespace DaggerfallWorkshop.Game.Items
         /// Gets or sets item group index.
         /// Setting will reset item data from new template.
         /// </summary>
-        public int GroupIndex
+        public virtual int GroupIndex
         {
             get { return groupIndex; }
             set { SetItem(itemGroup, value); }
@@ -189,7 +192,7 @@ namespace DaggerfallWorkshop.Game.Items
         /// <summary>
         /// Resolve this item's name.
         /// </summary>
-        public string ItemName
+        public virtual string ItemName
         {
             get { return DaggerfallUnity.Instance.ItemHelper.ResolveItemName(this); }
         }
@@ -197,7 +200,7 @@ namespace DaggerfallWorkshop.Game.Items
         /// <summary>
         /// Resolve this item's full name (mainly for tooltips).
         /// </summary>
-        public string LongName
+        public virtual string LongName
         {
             get { return DaggerfallUnity.Instance.ItemHelper.ResolveItemLongName(this); }
         }
@@ -222,7 +225,7 @@ namespace DaggerfallWorkshop.Game.Items
         /// <summary>
         /// Gets current variant of this item.
         /// </summary>
-        public int CurrentVariant
+        public virtual int CurrentVariant
         {
             get { return currentVariant; }
             set { SetCurrentVariant(value); }
@@ -421,7 +424,7 @@ namespace DaggerfallWorkshop.Game.Items
         /// <summary>
         /// Gets native material value.
         /// </summary>
-        public int NativeMaterialValue
+        public virtual int NativeMaterialValue
         {
             get { return nativeMaterialValue; }
         }
@@ -430,6 +433,12 @@ namespace DaggerfallWorkshop.Game.Items
         public ItemRepairData RepairData
         {
             get { return repairData; }
+        }
+
+        /// <summary>Gets current item condition as a percentage of max.</summary>
+        public int ConditionPercentage
+        {
+            get { return 100 * currentCondition / maxCondition; }
         }
 
         #endregion
@@ -492,7 +501,7 @@ namespace DaggerfallWorkshop.Game.Items
         /// <summary>
         /// Creates a new copy of this item.
         /// </summary>
-        /// <returns></returns>
+        /// <returns>Cloned item.</returns>
         public DaggerfallUnityItem Clone()
         {
             return new DaggerfallUnityItem(this);
@@ -518,7 +527,7 @@ namespace DaggerfallWorkshop.Game.Items
             ItemTemplate itemTemplate = DaggerfallUnity.Instance.ItemHelper.GetItemTemplate(itemGroup, groupIndex);
 
             // Assign new data
-            shortName = itemTemplate.name;
+            shortName = itemTemplate.name; // LOCALIZATION_TODO: Lookup item template name from localization
             this.itemGroup = itemGroup;
             this.groupIndex = groupIndex;
             playerTextureArchive = itemTemplate.playerTextureArchive;
@@ -569,7 +578,7 @@ namespace DaggerfallWorkshop.Game.Items
                 materialValue = 0x200 + materialValue;
 
             // Assign new data
-            shortName = magicItemTemplate.name;
+            shortName = magicItemTemplate.name; // LOCALIZATION_TODO: Lookup magic item template name from localization
             this.itemGroup = (ItemGroups)magicItemTemplate.group;
             this.groupIndex = magicItemTemplate.groupIndex;
             playerTextureArchive = archive;
@@ -654,16 +663,11 @@ namespace DaggerfallWorkshop.Game.Items
                 if (!IsOfTemplate(ItemGroups.Weapons, (int)Weapons.Arrow))
                     return false;
             }
-
+            // Equipped, quest and enchanted items cannot stack.
             if (IsEquipped || IsQuestItem || IsEnchanted)
                 return false;
-            if (IsIngredient || IsPotion ||
-                IsOfTemplate(ItemGroups.Currency, (int)Currency.Gold_pieces) ||
-                IsOfTemplate(ItemGroups.Weapons, (int)Weapons.Arrow) ||
-                IsOfTemplate(ItemGroups.UselessItems2, (int)UselessItems2.Oil))
-                return true;
-            else
-                return false;
+
+            return FormulaHelper.IsItemStackable(this);
         }
 
         /// <summary>
@@ -788,7 +792,7 @@ namespace DaggerfallWorkshop.Game.Items
             return data;
         }
 
-        public SoundClips GetEquipSound()
+        public virtual SoundClips GetEquipSound()
         {
             switch (itemGroup)
             {
@@ -846,7 +850,7 @@ namespace DaggerfallWorkshop.Game.Items
             }
         }
 
-        public SoundClips GetSwingSound()
+        public virtual SoundClips GetSwingSound()
         {
             switch (TemplateIndex)
             {
@@ -878,7 +882,7 @@ namespace DaggerfallWorkshop.Game.Items
             }
         }
 
-        public int GetWeaponSkillUsed()
+        public virtual int GetWeaponSkillUsed()
         {
             switch (TemplateIndex)
             {
@@ -911,7 +915,7 @@ namespace DaggerfallWorkshop.Game.Items
             }
         }
 
-        public short GetWeaponSkillIDAsShort()
+        public virtual short GetWeaponSkillIDAsShort()
         {
             int skill = GetWeaponSkillUsed();
             switch (skill)
@@ -937,72 +941,14 @@ namespace DaggerfallWorkshop.Game.Items
             return (DFCareer.Skills)GetWeaponSkillIDAsShort();
         }
 
-        public int GetBaseDamageMin()
+        public virtual int GetBaseDamageMin()
         {
-            switch (TemplateIndex)
-            {
-                case (int)Weapons.Dagger:
-                case (int)Weapons.Tanto:
-                case (int)Weapons.Wakazashi:
-                case (int)Weapons.Shortsword:
-                case (int)Weapons.Broadsword:
-                case (int)Weapons.Staff:
-                case (int)Weapons.Mace:
-                    return 1;
-                case (int)Weapons.Longsword:
-                case (int)Weapons.Claymore:
-                case (int)Weapons.Battle_Axe:
-                case (int)Weapons.War_Axe:
-                case (int)Weapons.Flail:
-                    return 2;
-                case (int)Weapons.Saber:
-                case (int)Weapons.Katana:
-                case (int)Weapons.Dai_Katana:
-                case (int)Weapons.Warhammer:
-                    return 3;
-                case (int)Weapons.Short_Bow:
-                case (int)Weapons.Long_Bow:
-                    return 4;
-
-                default:
-                    return 0;
-            }
+            return FormulaHelper.CalculateWeaponMinDamage((Weapons)TemplateIndex);
         }
 
-        public int GetBaseDamageMax()
+        public virtual int GetBaseDamageMax()
         {
-            switch (TemplateIndex)
-            {
-                case (int)Weapons.Dagger:
-                    return 6;
-                case (int)Weapons.Tanto:
-                case (int)Weapons.Shortsword:
-                case (int)Weapons.Staff:
-                    return 8;
-                case (int)Weapons.Wakazashi:
-                    return 10;
-                case (int)Weapons.Broadsword:
-                case (int)Weapons.Saber:
-                case (int)Weapons.Battle_Axe:
-                case (int)Weapons.Mace:
-                    return 12;
-                case (int)Weapons.Flail:
-                    return 14;
-                case (int)Weapons.Longsword:
-                case (int)Weapons.Katana:
-                case (int)Weapons.War_Axe:
-                case (int)Weapons.Short_Bow:
-                    return 16;
-                case (int)Weapons.Claymore:
-                case (int)Weapons.Warhammer:
-                case (int)Weapons.Long_Bow:
-                    return 18;
-                case (int)Weapons.Dai_Katana:
-                    return 21;
-
-                default:
-                    return 0;
-            }
+            return FormulaHelper.CalculateWeaponMaxDamage((Weapons)TemplateIndex);
         }
 
         public int GetWeaponMaterialModifier()
@@ -1033,7 +979,7 @@ namespace DaggerfallWorkshop.Game.Items
             }
         }
 
-        public int GetMaterialArmorValue()
+        public virtual int GetMaterialArmorValue()
         {
             int result = 0;
             if (!IsShield)
@@ -1087,7 +1033,7 @@ namespace DaggerfallWorkshop.Game.Items
             return result;
         }
 
-        public int GetShieldArmorValue()
+        public virtual int GetShieldArmorValue()
         {
             switch (TemplateIndex)
             {
@@ -1108,7 +1054,7 @@ namespace DaggerfallWorkshop.Game.Items
         /// <summary>
         /// Get body parts protected by a shield.
         /// </summary>
-        public BodyParts[] GetShieldProtectedBodyParts()
+        public virtual BodyParts[] GetShieldProtectedBodyParts()
         {
             switch (TemplateIndex)
             {
@@ -1181,16 +1127,19 @@ namespace DaggerfallWorkshop.Game.Items
             }
         }
 
-        public void DamageThroughPhysicalHit(int damage, DaggerfallEntity owner)
+        public virtual EquipSlots GetEquipSlot()
         {
-            int amount = (10 * damage + 50) / 100;
-            if ((amount == 0) && Dice100.SuccessRoll(20))
-                amount = 1;
-            currentCondition -= amount;
-            if (currentCondition <= 0)
-            {
-                ItemBreaks(owner);
-            }
+            return EquipSlots.None;
+        }
+
+        public virtual ItemHands GetItemHands()
+        {
+            return ItemHands.None;
+        }
+
+        public virtual WeaponTypes GetWeaponType()
+        {
+            return WeaponTypes.None;
         }
 
         public void LowerCondition(int amount, DaggerfallEntity unequipFromOwner = null, ItemCollection removeFromCollectionWhenBreaks = null)
@@ -1198,9 +1147,10 @@ namespace DaggerfallWorkshop.Game.Items
             currentCondition -= amount;
             if (currentCondition <= 0)
             {
+                // Handle breaking - if AllowMagicRepairs enabled then item will not disappear
                 currentCondition = 0;
                 ItemBreaks(unequipFromOwner);
-                if (removeFromCollectionWhenBreaks != null)
+                if (removeFromCollectionWhenBreaks != null && !DaggerfallUnity.Settings.AllowMagicRepairs)
                     removeFromCollectionWhenBreaks.RemoveItem(this);
             }
         }
@@ -1213,7 +1163,10 @@ namespace DaggerfallWorkshop.Game.Items
             foreach (EquipSlots slot in Enum.GetValues(typeof(EquipSlots)))
             {
                 if (owner.ItemEquipTable.GetItem(slot) == this)
+                {
                     owner.ItemEquipTable.UnequipItem(slot);
+                    owner.UpdateEquippedArmorValues(this, false);
+                }
             }
         }
 
@@ -1223,9 +1176,9 @@ namespace DaggerfallWorkshop.Game.Items
             // Also the classic string says "is" instead of "has"
             string itemBroke = "";
             if (TemplateIndex == (int)Armor.Boots || TemplateIndex == (int)Armor.Gauntlets || TemplateIndex == (int)Armor.Greaves)
-                itemBroke = UserInterfaceWindows.HardStrings.itemHasBrokenPlural;
+                itemBroke = TextManager.Instance.GetLocalizedText("itemHasBrokenPlural");
             else
-                itemBroke = UserInterfaceWindows.HardStrings.itemHasBroken;
+                itemBroke = TextManager.Instance.GetLocalizedText("itemHasBroken");
             itemBroke = itemBroke.Replace("%s", LongName);
             DaggerfallUI.Instance.PopupMessage(itemBroke);
 
@@ -1275,6 +1228,14 @@ namespace DaggerfallWorkshop.Game.Items
         public void IdentifyItem()
         {
             flags = (ushort)(flags | identifiedMask);
+        }
+
+        /// <summary>
+        /// Gets the enchantment points of this item.
+        /// </summary>
+        public virtual int GetEnchantmentPower()
+        {
+            return FormulaHelper.GetItemEnchantmentPower(this);
         }
 
         /// <summary>
@@ -1348,7 +1309,6 @@ namespace DaggerfallWorkshop.Game.Items
             // Unequip item - entity must equip again
             // This ensures "on equip" effect payloads execute correctly
             UnequipItem(owner);
-            owner.UpdateEquippedArmorValues(this, false);
 
             // Set new enchantments and identified flag
             legacyMagic = legacyEnchantments.ToArray();
@@ -1529,6 +1489,10 @@ namespace DaggerfallWorkshop.Game.Items
             potionRecipeKey = other.potionRecipeKey;
             timeHealthLeechLastUsed = other.timeHealthLeechLastUsed;
 
+            isQuestItem = other.isQuestItem;
+            questUID = other.questUID;
+            questItemSymbol = other.questItemSymbol;
+
             if (other.legacyMagic != null)
                 legacyMagic = (DaggerfallEnchantment[])other.legacyMagic.Clone();
 
@@ -1557,7 +1521,7 @@ namespace DaggerfallWorkshop.Game.Items
             int worldRecord = (worldBitfield & 0x7f);
 
             // Assign new data
-            shortName = itemRecord.ParsedData.name;
+            shortName = itemRecord.ParsedData.name; // LOCALIZATION_TODO: Lookup item template name from localizations
             itemGroup = group;
             groupIndex = index;
             playerTextureArchive = playerArchive;

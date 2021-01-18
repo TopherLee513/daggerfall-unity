@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -112,7 +112,7 @@ namespace DaggerfallWorkshop.Game.Questing
 
             // Init spawn timer on first update
             if (lastSpawnTime == 0)
-                lastSpawnTime = gameSeconds + (uint)UnityEngine.Random.Range(0, spawnInterval + 1);
+                lastSpawnTime = gameSeconds - (uint)UnityEngine.Random.Range(0, spawnInterval);
 
             // Do nothing if max foes already spawned
             // This can be cleared on next set/rearm
@@ -128,14 +128,13 @@ namespace DaggerfallWorkshop.Game.Questing
             }
 
             // Check for a new spawn event - only one spawn event can be running at a time
-            if (gameSeconds > lastSpawnTime + spawnInterval && !spawnInProgress)
+            if (gameSeconds >= lastSpawnTime + spawnInterval && !spawnInProgress)
             {
                 // Update last spawn time
                 lastSpawnTime = gameSeconds;
 
                 // Roll for spawn chance
-                float chance = spawnChance / 100f;
-                if (UnityEngine.Random.Range(0f, 1f) > chance)
+                if (Dice100.FailedRoll(spawnChance))
                     return;
 
                 // Get the Foe resource
@@ -291,13 +290,19 @@ namespace DaggerfallWorkshop.Game.Questing
             RaycastHit initialHit;
             if (Physics.Raycast(ray, out initialHit, maxDistance))
             {
-                // Separate out from hit point
-                float extraDistance = UnityEngine.Random.Range(0f, 2f);
-                currentPoint = initialHit.point + initialHit.normal.normalized * (separationDistance + extraDistance);
+                float cos_normal = Vector3.Dot(- spawnDirection, initialHit.normal.normalized);
+                if (cos_normal < 1e-6)
+                    return;
+                float separationForward = separationDistance / cos_normal;
 
                 // Must be greater than minDistance
-                if (initialHit.distance < minDistance)
+                float distanceSlack = initialHit.distance - separationForward - minDistance;
+                if (distanceSlack < 0f)
                     return;
+
+                // Separate out from hit point
+                float extraDistance = UnityEngine.Random.Range(0f, Mathf.Min(2f, distanceSlack));
+                currentPoint = initialHit.point - spawnDirection * (separationForward + extraDistance);
             }
             else
             {

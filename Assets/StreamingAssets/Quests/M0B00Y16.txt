@@ -52,7 +52,7 @@ RumorsPostfailure:  [1006]
 
 RumorsPostsuccess:  [1007]
 <ce>      Thank %god _dummy_ finally sent someone to kill that giant
-<ce>    in ___mondung_.  It must have killed one of %g2 precious sheep.
+<ce>    in ___mondung_.  It must have killed one of %g3 precious sheep.
 
 QuestorPostsuccess:  [1008]
 <ce>                 It's my old friend Giant-Killer %pcf!
@@ -140,7 +140,7 @@ Message:  1080
 
 QBN:
 Item _gold_ gold
-Item _harpy_ magic_item
+Item _magic_ magic_item
 
 Person _questgiver_ group Questor male
 Person _dummy_ face 9 group Noble
@@ -153,7 +153,7 @@ Place _store_ remote generalstore
 Clock _qtime_ 00:00 0 flag 17 range 0 2
 
 Foe _giant_ is Giant
-Foe _F.01_ is Giant
+Foe _giantFriends_ is Giant
 
 --	Quest start-up:
 	start timer _qtime_ 
@@ -161,7 +161,7 @@ Foe _F.01_ is Giant
 	log 1020 step 0 
 	pick one of _victim_ _S.09_ _S.09_ 
 	pick one of _map_ _nomap_ _nomap_ 
-	give item _harpy_ to _giant_ 
+	pick one of _magicItem_ _noMagicItem_ _noMagicItem_ _noMagicItem_
 	place foe _giant_ at _mondung_ 
 
 variable _map_
@@ -173,7 +173,6 @@ _S.02_ task:
 
 _S.03_ task:
 	killed 1 _giant_ 
-	make _harpy_ permanent 
 
 _clickqgiver_ task:
 	clicked npc _questgiver_ 
@@ -196,6 +195,11 @@ _duelist_ task:
 _victim_ task:
 	place npc _villager_ at _mondung_ 
 
+variable _noMagicItem_
+_magicItem_ task:
+	give item _magic_ to _giant_ 
+	make _magic_ permanent 
+
 _S.09_ task:
 	hide npc _villager_ 
 
@@ -214,35 +218,36 @@ _no_ task:
 	say 1043 
 	change repute with _villager_ by -10 
 
+variable _escortComplete_
 _S.13_ task:
 	say 1044 
 	drop _villager_ face 
 	change repute with _villager_ by +15 
 	place npc _villager_ at _store_ 
+	start task _escortComplete_
 
 _S.14_ task:
-	when _yes_ and not _S.13_ and _qtime_ 
+	when _yes_ and not _escortComplete_ and _qtime_ 
 	say 1042 
 
 _S.15_ task:
 	when _success_ and _no_ 
 
 _S.16_ task:
-	when _success_ and _yes_ 
+	when _success_ and _S.09_
 
 _S.17_ task:
-	when _success_ and _S.13_ 
+	when _success_ and _escortComplete_ 
 
 _S.18_ task:
-	when _qtime_ or _S.15_ or _S.16_ or _S.17_ 
+	when _qtime_ or _S.15_ or _S.16_ or _S.17_ or _S.19_
 	end quest 
 
 _S.19_ task:
-	when not _victim_ and _success_
-	end quest
+	when _success_ and _victim_ and not _S.10_
 
 _giantWaveWhileInDungeon_ task:
 	pc at _mondung_ set _spawnGiants_
 
 _spawnGiants_ task:
-	create foe _F.01_ every 4 minutes 6 times with 50% success 
+	create foe _giantFriends_ every 3 minutes 6 times with 50% success 

@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -94,7 +94,6 @@ namespace DaggerfallWorkshop
         DaggerfallUnity dfUnity;
         DFPosition mapOrigin;
         double worldX, worldZ;
-        readonly TerrainTexturing terrainTexturing = new TerrainTexturing();
         bool isReady = false;
 
         Vector3 autoRepositionOffset = Vector3.zero;
@@ -106,6 +105,7 @@ namespace DaggerfallWorkshop
 
         DaggerfallLocation currentPlayerLocationObject;
         int playerTilemapIndex = -1;
+        DFPosition prevMapPixel;
 
         private int? travelStartX = null;
         private int? travelStartZ = null;
@@ -158,11 +158,6 @@ namespace DaggerfallWorkshop
             get { return (streamingTarget != null) ? streamingTarget.transform : this.transform; }
         }
 
-        public TerrainTexturing TerrainTexturing
-        {
-            get { return terrainTexturing; }
-        }
-
         /// <summary>
         /// Gets current DaggerfallLocation (if any) for player's current map pixel.
         /// Will return null for any map pixel in wilderness or if world still being built on init.
@@ -186,6 +181,8 @@ namespace DaggerfallWorkshop
         {
             get { return playerTilemapIndex; }
         }
+
+        public bool IsRepositioningPlayer { get; private set; }
 
         #endregion
 
@@ -248,6 +245,7 @@ namespace DaggerfallWorkshop
                 init)
             {
                 Debug.Log(string.Format("Entering new map pixel X={0}, Y={1}", curMapPixel.X, curMapPixel.Y));
+                prevMapPixel = new DFPosition(MapPixelX, MapPixelY);
                 MapPixelX = curMapPixel.X;
                 MapPixelY = curMapPixel.Y;
                 UpdateWorld();
@@ -472,7 +470,11 @@ namespace DaggerfallWorkshop
 
         public void ClearStatefulLooseObjects()
         {
-            looseObjectsList.RemoveAll(x => x.statefulObj);
+            looseObjectsList.RemoveAll(x => {
+                if (x.statefulObj)
+                    Destroy(x.gameObject);
+                return x.statefulObj;
+            });
         }
 
         /// <summary>
@@ -484,7 +486,18 @@ namespace DaggerfallWorkshop
             if (!currentPlayerLocationObject)
                 return null;
 
-            return currentPlayerLocationObject.GetComponent<BuildingDirectory>();
+            // buildingDirectory MapID must match PlayerGPS.CurrentLocation MapID or building data might be out of sync with location until world finishes loading
+            BuildingDirectory buildingDirectory = currentPlayerLocationObject.GetComponent<BuildingDirectory>();
+            if (buildingDirectory && buildingDirectory.MapID != GameManager.Instance.PlayerGPS.CurrentLocation.MapTableData.MapId)
+            {
+                Debug.LogWarningFormat(
+                    "GetCurrentBuildingDirectory() MapID={0} does not match PlayerGPS.CurrentLocation MapID={1}. StreamingWorld might still be loading locations.",
+                    currentPlayerLocationObject.Summary.MapID,
+                    GameManager.Instance.PlayerGPS.CurrentLocation.MapTableData.MapId);
+                return null;
+            }
+
+            return buildingDirectory;
         }
 
         /// <summary>
@@ -595,7 +608,7 @@ namespace DaggerfallWorkshop
             System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 #endif
 
-            CollectLooseObjects(true);
+            CollectLooseObjects();
             int playerTerrainIndex = terrainIndexDict[TerrainHelper.MakeTerrainKey(MapPixelX, MapPixelY)];
 
             UpdateTerrainData(terrainArray[playerTerrainIndex]);
@@ -649,7 +662,10 @@ namespace DaggerfallWorkshop
             // If this is an init we can use the load time to unload unused assets
             // Keeps memory usage much lower over time
             if (init)
-                Resources.UnloadUnusedAssets();
+            {
+                DaggerfallUnity.Instance.PruneCache();
+                DaggerfallGC.ThrottledUnloadUnusedAssets();
+            }
 
             // Set terrain neighbours
             UpdateNeighbours();
@@ -842,7 +858,6 @@ namespace DaggerfallWorkshop
                 if (terrainArray[index].active)
                 {
                     // Terrain already active in scene, nothing to do
-                    return;
                 }
                 else
                 {
@@ -850,6 +865,17 @@ namespace DaggerfallWorkshop
                     terrainArray[index].active = true;
                     terrainArray[index].terrainObject.SetActive(true);
                     terrainArray[index].billboardBatchObject.SetActive(true);
+                    // also set flag for updating locations if this terrain contains a location - so building data gets created again
+                    // this fixes the missing buildings bug - see this forum-thread: https://forums.dfworkshop.net/viewtopic.php?f=4&t=3391&start=10)
+                    terrainArray[index].updateLocation = terrainArray[index].hasLocation;
+                }
+                // If any nature model replacements are used then do extra nature updates for any terrains moving into or out of distance 1 or less.
+                if (TerrainHelper.NatureMeshUsed)
+                {
+                    int prevDist = GetTerrainDist(prevMapPixel, terrainArray[index].mapPixelX, terrainArray[index].mapPixelY);
+                    int currDist = GetTerrainDist(LocalPlayerGPS.CurrentMapPixel, terrainArray[index].mapPixelX, terrainArray[index].mapPixelY);
+                    if ((prevDist == 1 && currDist > 1) || (currDist == 1 && prevDist > 1))
+                        terrainArray[index].updateNature = true;
                 }
                 return;
             }
@@ -1173,7 +1199,7 @@ namespace DaggerfallWorkshop
             }
 
             // Update data for terrain
-            JobHandle updateTerrainDataJobHandle = dfTerrain.BeginMapPixelDataUpdate(terrainTexturing);
+            JobHandle updateTerrainDataJobHandle = dfTerrain.BeginMapPixelDataUpdate(dfUnity.TerrainTexturing);
 
             CompleteUpdateTerrainDataJobs(terrainDesc, dfTerrain, updateTerrainDataJobHandle);
         }
@@ -1182,7 +1208,7 @@ namespace DaggerfallWorkshop
         {
             // Ensure jobs have completed.
             updateTerrainDataJobHandle.Complete();
-            dfTerrain.CompleteMapPixelDataUpdate(terrainTexturing);
+            dfTerrain.CompleteMapPixelDataUpdate(dfUnity.TerrainTexturing);
 
             // Promote data to live terrain
             dfTerrain.UpdateClimateMaterial(init);
@@ -1206,7 +1232,7 @@ namespace DaggerfallWorkshop
                 dfTerrain.InstantiateTerrain();
             }
 
-            JobHandle updateTerrainDataJobHandle = dfTerrain.BeginMapPixelDataUpdate(terrainTexturing);
+            JobHandle updateTerrainDataJobHandle = dfTerrain.BeginMapPixelDataUpdate(dfUnity.TerrainTexturing);
             yield return new WaitUntil(() => updateTerrainDataJobHandle.IsCompleted);
 
             CompleteUpdateTerrainDataJobs(terrainDesc, dfTerrain, updateTerrainDataJobHandle);
@@ -1223,10 +1249,11 @@ namespace DaggerfallWorkshop
             DaggerfallBillboardBatch dfBillboardBatch = terrainDesc.billboardBatchObject.GetComponent<DaggerfallBillboardBatch>();
             if (dfTerrain && dfBillboardBatch)
             {
-                // Get current climate and nature archive
+                // Get current climate and nature archive and terrain distance
                 int natureArchive = ClimateSwaps.GetNatureArchive(LocalPlayerGPS.ClimateSettings.NatureSet, dfUnity.WorldTime.Now.SeasonValue);
                 dfBillboardBatch.SetMaterial(natureArchive);
-                TerrainHelper.LayoutNatureBillboards(dfTerrain, dfBillboardBatch, TerrainScale);
+                int terrainDist = GetTerrainDist(LocalPlayerGPS.CurrentMapPixel, dfTerrain.MapPixelX, dfTerrain.MapPixelY);
+                TerrainHelper.LayoutNatureBillboards(dfTerrain, dfBillboardBatch, TerrainScale, terrainDist);
             }
 
             // Only set active again once complete
@@ -1252,6 +1279,15 @@ namespace DaggerfallWorkshop
         #endregion
 
         #region Player Utility Methods
+
+        // Calculate the distance of terrain from given map position
+        private int GetTerrainDist(DFPosition mapPosition, int terrainMapPixelX, int terrainMapPixelY)
+        {
+            DFPosition curMapPixel = LocalPlayerGPS.CurrentMapPixel;
+            int dx = Mathf.Abs(terrainMapPixelX - mapPosition.X);
+            int dy = Mathf.Abs(terrainMapPixelY - mapPosition.Y);
+            return Mathf.Max(dx, dy);
+        }
 
         private DaggerfallTerrain GetPlayerTerrain()
         {
@@ -1292,6 +1328,7 @@ namespace DaggerfallWorkshop
             {
                 // Get target position at terrain height + player standing height
                 // This is our minimum height before player falls through world
+                IsRepositioningPlayer = true;
                 Vector3 targetPosition = new Vector3(position.x, 0, position.z);
                 float height = terrain.SampleHeight(targetPosition + terrain.transform.position) + worldCompensation.y;
                 targetPosition.y = height + controller.height / 2f + 0.15f;
@@ -1311,6 +1348,7 @@ namespace DaggerfallWorkshop
                 CollectLooseObjects();
 
                 ResyncWorldCoordinates();
+                IsRepositioningPlayer = false;
             }
             else
             {

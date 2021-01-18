@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -21,6 +21,7 @@ using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Utility.AssetInjection;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Serialization;
+using DaggerfallWorkshop.Game.Formulas;
 
 namespace DaggerfallWorkshop.Game
 {
@@ -36,6 +37,7 @@ namespace DaggerfallWorkshop.Game
         public bool FlipHorizontal = false;
         public WeaponTypes WeaponType = WeaponTypes.None;
         public MetalTypes MetalType = MetalTypes.None;
+        public ItemHands WeaponHands = ItemHands.None;
         public float Reach = 2.5f;
         public float AttackSpeedScale = 1.0f;
         public float Cooldown = 0.0f;
@@ -65,10 +67,17 @@ namespace DaggerfallWorkshop.Game
         WeaponStates weaponState = WeaponStates.Idle;
         int currentFrame = 0;
         int animTicks = 0;
+        float animTickTime;
         Rect curAnimRect;
+        float weaponOffsetHeight;
 
         readonly Dictionary<int, Texture2D> customTextures = new Dictionary<int, Texture2D>();
         Texture2D curCustomTexture;
+
+        float lastScreenWidth, lastScreenHeight;
+        bool lastLargeHUDSetting, lastLargeHUDDockSetting;
+        bool lastSheathed;
+        float lastWeaponOffsetHeight;
 
         #region Properties
 
@@ -85,6 +94,7 @@ namespace DaggerfallWorkshop.Game
 
         void OnGUI()
         {
+            bool updateWeapon = false;
             GUI.depth = 1;
 
             // Must be ready and not loading the game
@@ -97,8 +107,40 @@ namespace DaggerfallWorkshop.Game
                 LoadWeaponAtlas();
                 if (weaponAtlas == null)
                     return;
+                updateWeapon = true;
             }
-            UpdateWeapon();
+
+            // Offset weapon by large HUD height when both large HUD and undocked weapon offset enabled
+            // Weapon is forced to offset when using docked HUD else it would appear underneath HUD
+            // This helps user avoid such misconfiguration or it might be interpreted as a bug
+            weaponOffsetHeight = 0;
+            if (DaggerfallUI.Instance.DaggerfallHUD != null &&
+                DaggerfallUnity.Settings.LargeHUD &&
+                (DaggerfallUnity.Settings.LargeHUDUndockedOffsetWeapon || DaggerfallUnity.Settings.LargeHUDDocked))
+            {
+                weaponOffsetHeight = (int)DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight;
+            }
+
+            // Update weapon when resolution or large HUD state changes
+            if (Screen.width != lastScreenWidth ||
+                Screen.height != lastScreenHeight ||
+                DaggerfallUnity.Settings.LargeHUD != lastLargeHUDSetting ||
+                DaggerfallUnity.Settings.LargeHUDDocked != lastLargeHUDDockSetting ||
+                GameManager.Instance.WeaponManager.Sheathed != lastSheathed ||
+                weaponOffsetHeight != lastWeaponOffsetHeight)
+            {
+                lastScreenWidth = Screen.width;
+                lastScreenHeight = Screen.height;
+                lastLargeHUDSetting = DaggerfallUnity.Settings.LargeHUD;
+                lastLargeHUDDockSetting = DaggerfallUnity.Settings.LargeHUDDocked;
+                lastSheathed = GameManager.Instance.WeaponManager.Sheathed;
+                lastWeaponOffsetHeight = weaponOffsetHeight;
+                updateWeapon = true;
+            }
+
+            // Update weapon state only as needed
+            if (updateWeapon)
+                UpdateWeapon();
 
             if (Event.current.type.Equals(EventType.Repaint) && ShowWeapon)
             {
@@ -172,7 +214,7 @@ namespace DaggerfallWorkshop.Game
 
         public float GetAnimTime()
         {
-            return animTicks * GetAnimTickTime();
+            return animTicks * animTickTime;
         }
 
         public void PlayActivateSound()
@@ -240,7 +282,7 @@ namespace DaggerfallWorkshop.Game
             if (!GameManager.Instance.WeaponManager.Sheathed && WeaponType == WeaponTypes.Bow && GameManager.Instance.PlayerEntity.Items.GetItem(Items.ItemGroups.Weapons, (int)Items.Weapons.Arrow) == null)
             {
                 GameManager.Instance.WeaponManager.SheathWeapons();
-                DaggerfallUI.SetMidScreenText(UserInterfaceWindows.HardStrings.youHaveNoArrows);
+                DaggerfallUI.SetMidScreenText(TextManager.Instance.GetLocalizedText("youHaveNoArrows"));
             }
 
             // Store rect and anim
@@ -248,7 +290,7 @@ namespace DaggerfallWorkshop.Game
             if (WeaponType == WeaponTypes.Bow)
                 weaponAnimRecordIndex = 0; // Bow has only 1 animation
             else
-                weaponAnimRecordIndex = (int)weaponState;
+                weaponAnimRecordIndex = weaponAnims[(int)weaponState].Record;
 
             try
             {
@@ -305,6 +347,8 @@ namespace DaggerfallWorkshop.Game
                         AlignRight(anim, width, height);
                         break;
                 }
+                // Set the frame time (attack speed)
+                animTickTime = GetAnimTickTime();
             }
             catch (IndexOutOfRangeException)
             {
@@ -316,7 +360,7 @@ namespace DaggerfallWorkshop.Game
         {
             weaponPosition = new Rect(
                 Screen.width * anim.Offset,
-                Screen.height - height * weaponScaleY,
+                Screen.height - height * weaponScaleY - weaponOffsetHeight,
                 width * weaponScaleX,
                 height * weaponScaleY);
         }
@@ -325,7 +369,7 @@ namespace DaggerfallWorkshop.Game
         {
             weaponPosition = new Rect(
                 Screen.width / 2f - (width * weaponScaleX) / 2f,
-                Screen.height - height * weaponScaleY,
+                Screen.height - height * weaponScaleY - weaponOffsetHeight,
                 width * weaponScaleX,
                 height * weaponScaleY);
         }
@@ -341,7 +385,7 @@ namespace DaggerfallWorkshop.Game
 
             weaponPosition = new Rect(
                 Screen.width * (1f - anim.Offset) - width * weaponScaleX,
-                Screen.height - height * weaponScaleY,
+                Screen.height - height * weaponScaleY - weaponOffsetHeight,
                 width * weaponScaleX,
                 height * weaponScaleY);
         }
@@ -362,17 +406,6 @@ namespace DaggerfallWorkshop.Game
                 cifFile.Palette.Load(Path.Combine(dfUnity.Arena2Path, cifFile.PaletteName));
             }
 
-            //// Must have weapon texture atlas
-            //if (weaponAtlas == null ||
-            //    WeaponType != lastWeaponType ||
-            //    MetalType != lastMetalType)
-            //{
-            //    LoadWeaponAtlas();
-            //    if (weaponAtlas == null)
-            //        return false;
-            //    UpdateWeapon();
-            //}
-
             return true;
         }
 
@@ -380,8 +413,6 @@ namespace DaggerfallWorkshop.Game
         {
             while (true)
             {
-                float time = GetAnimTickTime();
-
                 if (weaponAnims != null && ShowWeapon)
                 {
                     int frameBeforeStepping = currentFrame;
@@ -426,26 +457,22 @@ namespace DaggerfallWorkshop.Game
                         }
                     }
 
-                    // Only update if the frame actually changed
+                    // Only update if the frame actually changed & weapon drawn
                     if (frameBeforeStepping != currentFrame)
                         UpdateWeapon();
                 }
 
-                yield return new WaitForSeconds(time);
+                yield return new WaitForSeconds(animTickTime);
             }
         }
 
         private float GetAnimTickTime()
         {
             PlayerEntity player = GameManager.Instance.PlayerEntity;
-            float speed = 0;
             if (WeaponType == WeaponTypes.Bow || player == null)
                 return GameManager.classicUpdateInterval;
             else
-            {
-                speed = 3 * (115 - player.Stats.LiveSpeed);
-                return speed / 980; // Approximation of classic frame update
-            }
+                return FormulaHelper.GetMeleeWeaponAnimTime(player, WeaponType, WeaponHands);
         }
 
         private void LoadWeaponAtlas()
@@ -465,6 +492,7 @@ namespace DaggerfallWorkshop.Game
             // Store current weapon
             currentWeaponType = WeaponType;
             currentMetalType = MetalType;
+            animTickTime = GetAnimTickTime();
         }
 
         #endregion

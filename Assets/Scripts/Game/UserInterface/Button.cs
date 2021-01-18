@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -13,10 +13,6 @@
 //#define DEBUG_BUTTON_CLICKS
 
 using UnityEngine;
-using System;
-using System.Collections.Generic;
-using System.Text;
-using DaggerfallWorkshop.Game.UserInterfaceWindows;
 
 namespace DaggerfallWorkshop.Game.UserInterface
 {
@@ -27,6 +23,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
     {
         TextLabel label = new TextLabel();
         AudioClip clickSound;
+        HotkeySequence shortcutKey = HotkeySequence.None;
 
         public string ClickMessage { get; set; }
         public string DoubleClickMessage { get; set; }
@@ -41,6 +38,12 @@ namespace DaggerfallWorkshop.Game.UserInterface
         {
             get { return clickSound; }
             set { clickSound = value; }
+        }
+
+        public HotkeySequence Hotkey
+        {
+            get { return shortcutKey; }
+            set { shortcutKey = value; }
         }
 
         public Button()
@@ -71,6 +74,22 @@ namespace DaggerfallWorkshop.Game.UserInterface
         {
             base.Draw();
             label.Draw();
+        }
+
+        new public bool ProcessHotkeySequences(HotkeySequence.KeyModifiers keyModifiers)
+        {
+            bool isKeyDown = DaggerfallUI.Instance.KeyEvent.type == EventType.KeyDown;
+            bool isActivated = isKeyDown ? shortcutKey.IsDownWith(keyModifiers) : shortcutKey.IsUpWith(keyModifiers);
+            if (isActivated)
+            {
+                if (!KeyboardEvent(DaggerfallUI.Instance.KeyEvent))
+                {
+                    // Legacy support fallback, OnMouseClick handlers receive KeyDown events as faked clicks
+                    if (isKeyDown)
+                        TriggerMouseClick();
+                }
+            }
+            return isActivated;
         }
 
         void ClickHandler(BaseScreenComponent sender, Vector2 position)

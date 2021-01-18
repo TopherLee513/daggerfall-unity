@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game.Entity;
 using System.Text.RegularExpressions;
+using DaggerfallConnect.Arena2;
 using FullSerializer;
 
 namespace DaggerfallWorkshop.Game.Questing
@@ -207,7 +209,7 @@ namespace DaggerfallWorkshop.Game.Questing
 
                 // Resolve info message name back to ID
                 string infoName = match.Groups["infoName"].Value;
-                if (usedMessageID == -1 && !string.IsNullOrEmpty(infoName))
+                if (infoMessageID == -1 && !string.IsNullOrEmpty(infoName))
                 {
                     Table table = QuestMachine.Instance.StaticMessagesTable;
                     infoMessageID = Parser.ParseInt(table.GetValue("id", infoName));
@@ -254,7 +256,6 @@ namespace DaggerfallWorkshop.Game.Questing
         /// </summary>
         public virtual void Dispose()
         {
-            RaiseOnDisposeEvent();
         }
 
         /// <summary>
@@ -278,6 +279,24 @@ namespace DaggerfallWorkshop.Game.Questing
         {
             hasPlayerClicked = false;
         }
+
+        public List<TextFile.Token[]> GetMessage(int messageId)
+        {
+            Message message = ParentQuest.GetMessage(messageId);
+            return message == null ? null : TokenizeMessage(message);
+        }
+
+        private static List<TextFile.Token[]> TokenizeMessage(Message message)
+        {
+            var tokenList = new List<TextFile.Token[]>();
+            for (int i = 0; i < message.VariantCount; i++)
+            {
+                TextFile.Token[] tokens = message.GetTextTokensByVariant(i, false); // do not expand macros here (they will be expanded just in time by TalkManager class)
+                tokenList.Add(tokens);
+            }
+
+            return tokenList;
+        } 
 
         #region Serialization
 
@@ -345,19 +364,6 @@ namespace DaggerfallWorkshop.Game.Questing
             // Set hidden flag
             // NOTE: Foes are a one-to-many resource - hiding a Foe will remove ALL spawned instances of that Foe
             isHidden = value;
-        }
-
-        #endregion
-
-        #region Events
-
-        // OnDispose
-        public delegate void OnDisposeEventHandler();
-        public event OnDisposeEventHandler OnDispose;
-        protected virtual void RaiseOnDisposeEvent()
-        {
-            if (OnDispose != null)
-                OnDispose();
         }
 
         #endregion

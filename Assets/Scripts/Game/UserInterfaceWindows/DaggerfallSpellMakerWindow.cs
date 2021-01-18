@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -17,7 +17,6 @@ using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game.UserInterface;
 using DaggerfallWorkshop.Game.MagicAndEffects;
 using DaggerfallWorkshop.Game.Formulas;
-using DaggerfallWorkshop.Game.Items;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 {
@@ -124,7 +123,6 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         const MagicCraftingStations thisMagicStation = MagicCraftingStations.SpellMaker;
 
-        const string textDatabase = "SpellmakerUI";
         const string baseTextureFilename = "INFO01I0.IMG";
         const string goldSelectIconsFilename = "MASK01I0.IMG";
         const string colorSelectIconsFilename = "MASK04I0.IMG";
@@ -314,42 +312,43 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         void SetupButtons()
         {
             // Control
-            AddTipButton(addEffectButtonRect, "addEffect", AddEffectButton_OnMouseClick);
-            AddTipButton(buyButtonRect, "buySpell", BuyButton_OnMouseClick);
-            AddTipButton(newButtonRect, "newSpell", NewSpellButton_OnMouseClick);
-            AddTipButton(exitButtonRect, "exit", ExitButton_OnMouseClick);
-            AddTipButton(nameSpellButtonRect, "nameSpell", NameSpellButton_OnMouseClick);
+            AddTipButton(addEffectButtonRect, "addEffect", AddEffectButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerAddEffect);
+            AddTipButton(buyButtonRect, "buySpell", BuyButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerBuySpell);
+            AddTipButton(newButtonRect, "newSpell", NewSpellButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerNewSpell);
+            AddTipButton(exitButtonRect, "exit", ExitButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerExit);
+            AddTipButton(nameSpellButtonRect, "nameSpell", NameSpellButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerNameSpell);
 
             // Target
-            casterOnlyButton = AddTipButton(casterOnlyButtonRect, "casterOnly", CasterOnlyButton_OnMouseClick);
-            byTouchButton = AddTipButton(byTouchButtonRect, "byTouch", ByTouchButton_OnMouseClick);
-            singleTargetAtRangeButton = AddTipButton(singleTargetAtRangeButtonRect, "singleTargetAtRange", SingleTargetAtRangeButton_OnMouseClick);
-            areaAroundCasterButton = AddTipButton(areaAroundCasterButtonRect, "areaAroundCaster", AreaAroundCasterButton_OnMouseClick);
-            areaAtRangeButton = AddTipButton(areaAtRangeButtonRect, "areaAtRange", AreaAtRangeButton_OnMouseClick);
+            casterOnlyButton = AddTipButton(casterOnlyButtonRect, "casterOnly", CasterOnlyButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerTargetCaster);
+            byTouchButton = AddTipButton(byTouchButtonRect, "byTouch", ByTouchButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerTargetTouch);
+            singleTargetAtRangeButton = AddTipButton(singleTargetAtRangeButtonRect, "singleTargetAtRange", SingleTargetAtRangeButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerTargetSingleAtRange);
+            areaAroundCasterButton = AddTipButton(areaAroundCasterButtonRect, "areaAroundCaster", AreaAroundCasterButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerTargetAroundCaster);
+            areaAtRangeButton = AddTipButton(areaAtRangeButtonRect, "areaAtRange", AreaAtRangeButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerTargetAreaAtRange);
 
             // Element
-            fireBasedButton = AddTipButton(fireBasedButtonRect, "fireBased", FireBasedButton_OnMouseClick);
-            coldBasedButton = AddTipButton(coldBasedButtonRect, "coldBased", ColdBasedButton_OnMouseClick);
-            poisonBasedButton = AddTipButton(poisonBasedButtonRect, "poisonBased", PoisonBasedButton_OnMouseClick);
-            shockBasedButton = AddTipButton(shockBasedButtonRect, "shockBased", ShockBasedButton_OnMouseClick);
-            magicBasedButton = AddTipButton(magicBasedButtonRect, "magicBased", MagicBasedButton_OnMouseClick);
+            fireBasedButton = AddTipButton(fireBasedButtonRect, "fireBased", FireBasedButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerElementFire);
+            coldBasedButton = AddTipButton(coldBasedButtonRect, "coldBased", ColdBasedButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerElementCold);
+            poisonBasedButton = AddTipButton(poisonBasedButtonRect, "poisonBased", PoisonBasedButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerElementPoison);
+            shockBasedButton = AddTipButton(shockBasedButtonRect, "shockBased", ShockBasedButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerElementShock);
+            magicBasedButton = AddTipButton(magicBasedButtonRect, "magicBased", MagicBasedButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerElementMagic);
 
             // Icons
-            AddTipButton(nextIconButtonRect, "nextIcon", NextIconButton_OnMouseClick);
-            AddTipButton(previousIconButtonRect, "previousIcon", PreviousIconButton_OnMouseClick);
-            selectIconButton = AddTipButton(selectIconButtonRect, "selectIcon", SelectIconButton_OnMouseClick);
+            AddTipButton(nextIconButtonRect, "nextIcon", NextIconButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerNextIcon);
+            AddTipButton(previousIconButtonRect, "previousIcon", PreviousIconButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerPrevIcon);
+            selectIconButton = AddTipButton(selectIconButtonRect, "selectIcon", SelectIconButton_OnMouseClick, DaggerfallShortcut.Buttons.SpellMakerSelectIcon);
             //selectIconButton.OnRightMouseClick += PreviousIconButton_OnMouseClick;
 
             // Select default buttons
             UpdateAllowedButtons();
         }
 
-        Button AddTipButton(Rect rect, string tipID, BaseScreenComponent.OnMouseClickHandler handler)
+        Button AddTipButton(Rect rect, string tipID, BaseScreenComponent.OnMouseClickHandler handler, DaggerfallShortcut.Buttons button)
         {
             Button tipButton = DaggerfallUI.AddButton(rect, NativePanel);
             tipButton.OnMouseEnter += TipButton_OnMouseEnter;
             tipButton.OnMouseLeave += TipButton_OnMouseLeave;
             tipButton.OnMouseClick += handler;
+            tipButton.Hotkey = DaggerfallShortcut.GetBinding(button);
             tipButton.Tag = tipID;
 
             return tipButton;
@@ -750,7 +749,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             List<EffectEntry> effects = GetEffectEntries();
             if (effects.Count == 0)
             {
-                DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "noEffectsError"));
+                DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("noEffectsError"));
                 return;
             }
 
@@ -886,6 +885,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void SelectIconButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             uiManager.PushWindow(iconPicker);
         }
 
@@ -905,7 +905,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             DaggerfallInputMessageBox mb = new DaggerfallInputMessageBox(uiManager, this);
             mb.TextBox.Text = spellNameLabel.Text;
-            mb.SetTextBoxLabel(TextManager.Instance.GetText("SpellmakerUI", "enterSpellName") + " ");
+            mb.SetTextBoxLabel(TextManager.Instance.GetLocalizedText("enterSpellName") + " ");
             mb.OnGotUserInput += EnterName_OnGotUserInput;
             mb.Show();
         }
@@ -922,7 +922,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 throw new Exception(string.Format("Could not find any effect templates for group {0}", effectGroupPicker.ListBox.SelectedItem));
 
             // If this is a solo effect without any subgroups names defined (e.g. "Regenerate") then go straight to effect editor
-            if (enumeratedEffectTemplates.Count == 1 && string.IsNullOrEmpty(enumeratedEffectTemplates[0].Properties.SubGroupName))
+            if (enumeratedEffectTemplates.Count == 1 && string.IsNullOrEmpty(enumeratedEffectTemplates[0].SubGroupName))
             {
                 effectGroupPicker.CloseWindow();
                 AddAndEditSlot(enumeratedEffectTemplates[0]);
@@ -931,12 +931,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
 
             // Sort list by subgroup name
-            enumeratedEffectTemplates.Sort((s1, s2) => s1.Properties.SubGroupName.CompareTo(s2.Properties.SubGroupName));
+            enumeratedEffectTemplates.Sort((s1, s2) => s1.SubGroupName.CompareTo(s2.SubGroupName));
 
             // Populate subgroup names in list box
             foreach (IEntityEffect effect in enumeratedEffectTemplates)
             {
-                effectSubGroupPicker.ListBox.AddItem(effect.Properties.SubGroupName);
+                effectSubGroupPicker.ListBox.AddItem(effect.SubGroupName);
             }
             effectSubGroupPicker.ListBox.SelectedIndex = 0;
 
@@ -1040,7 +1040,13 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             if (!string.IsNullOrEmpty(tipLabel.Text))
                 lockTip = true;
 
-            tipLabel.Text = TextManager.Instance.GetText(textDatabase, sender.Tag as string);
+            tipLabel.Text = TextManager.Instance.GetLocalizedText(sender.Tag as string);
+            if (sender is Button)
+            {
+                Button buttonSender = (Button)sender;
+                if (buttonSender.Hotkey != HotkeySequence.None)
+                    tipLabel.Text += string.Format(" ({0})", buttonSender.Hotkey);
+            }
         }
 
         private void TipButton_OnMouseLeave(BaseScreenComponent sender)

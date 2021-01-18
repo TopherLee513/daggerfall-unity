@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -22,8 +22,6 @@ namespace DaggerfallWorkshop.Game
     public class EnablePlayerTorch : MonoBehaviour
     {
         public GameObject PlayerTorch;
-
-        const string textDatabase = "DaggerfallUI";
 
         DaggerfallUnity dfUnity;
         PlayerEnterExit playerEnterExit;
@@ -75,7 +73,7 @@ namespace DaggerfallWorkshop.Game
 
                         if (lightSource.currentCondition == 0 && DaggerfallUnityItem.CompareItems(playerEntity.LightSource, lightSource))
                         {
-                            DaggerfallUI.MessageBox(TextManager.Instance.GetText(textDatabase, "lightDies"), false, lightSource);
+                            DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("lightDies").Replace("%it", lightSource.ItemName));
                             enableTorch = false;
                             playerEntity.LightSource = null;
                             if (!lightSource.IsOfTemplate(ItemGroups.UselessItems2, (int)UselessItems2.Lantern))

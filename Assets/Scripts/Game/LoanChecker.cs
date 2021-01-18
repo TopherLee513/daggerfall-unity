@@ -12,7 +12,6 @@ namespace DaggerfallWorkshop.Game
     {
         const int MinutesPerMonth = DaggerfallDateTime.MinutesPerDay * DaggerfallDateTime.DaysPerMonth;
 
-        const string textDatabase = "DaggerfallUI";
         const float loanReminderHUDDelay = 3;
 
         public static void CheckOverdueLoans(uint lastGameMinutes)
@@ -40,9 +39,9 @@ namespace DaggerfallWorkshop.Game
                             if (Array.Exists(sendReminderMonths, month => lastRemainingMonths >= month && remainingMonths < month))
                             {
                                 // Send letters before due date instead?
-                                DaggerfallUI.AddHUDText(String.Format(TextManager.Instance.GetText(textDatabase, "loanReminder"),
+                                DaggerfallUI.AddHUDText(String.Format(TextManager.Instance.GetLocalizedText("loanReminder"),
                                     DaggerfallBankManager.GetLoanedTotal(regionIndex)), loanReminderHUDDelay);
-                                DaggerfallUI.AddHUDText(String.Format(TextManager.Instance.GetText(textDatabase, "loanReminder2"),
+                                DaggerfallUI.AddHUDText(String.Format(TextManager.Instance.GetLocalizedText("loanReminder2"),
                                     remainingMonths + 1, MapsFile.RegionNames[regionIndex]), loanReminderHUDDelay);
                             }
                         }
@@ -53,13 +52,19 @@ namespace DaggerfallWorkshop.Game
 
         private static void OverdueLoan(int regionIndex)
         {
+            // Try to repay the loan off player's account
             int transferAmount = (int)Math.Min(DaggerfallBankManager.GetLoanedTotal(regionIndex), DaggerfallBankManager.GetAccountTotal(regionIndex));
             DaggerfallBankManager.MakeTransaction(TransactionType.Repaying_loan_from_account, transferAmount, regionIndex);
             if (!DaggerfallBankManager.HasLoan(regionIndex))
                 return;
 
+            // Only apply reputation drop once
+            if (DaggerfallBankManager.HasDefaulted(regionIndex))
+                return;
+
             // Set hasDefaulted flag (Note: Does not seem to ever be set in classic)
             DaggerfallBankManager.SetDefaulted(regionIndex, true);
+
             PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
             // Should that be weighted by the amount?
             playerEntity.LowerRepForCrime(regionIndex, PlayerEntity.Crimes.LoanDefault);

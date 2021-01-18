@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -48,15 +48,12 @@ namespace DaggerfallWorkshop.Game
         /// </summary>
         void ApplyPlayerFallDamage(float fallDistance)
         {
-            const float threshold = 10f;
-            const float percentPerMetre = 50.0f / 100f;
+            const float threshold = 5f;
+            const float HPPerMetre = 5f;
 
             if (entityBehaviour)
             {
-                // Remove percent of max health for every metre over threshold
-                PlayerEntity entity = entityBehaviour.Entity as PlayerEntity;
-                int unit = (int)(entity.MaxHealth * percentPerMetre);
-                int damage = unit * (int)(fallDistance - threshold);
+                int damage = (int)(HPPerMetre * (fallDistance - threshold));
                 RemoveHealth(damage);
             }
         }

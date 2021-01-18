@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -18,6 +18,7 @@ using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallConnect.Arena2;
 using DaggerfallConnect.FallExe;
 using FullSerializer;
+using DaggerfallWorkshop.Game.Guilds;
 
 /*Example patterns:
  * 
@@ -136,12 +137,14 @@ namespace DaggerfallWorkshop.Game.Questing
 
             string declMatchStr = @"(Item|item) (?<symbol>[a-zA-Z0-9_.-]+) item class (?<itemClass>\d+) subclass (?<itemSubClass>\d+)|"+
                                   @"(Item|item) (?<symbol>[a-zA-Z0-9_.-]+) (?<artifact>artifact) (?<itemName>[a-zA-Z0-9_.-]+)|"+
+                                  @"(Item|item) (?<symbol>[a-zA-Z0-9_.-]+) (?<itemName>[a-zA-Z0-9_.-]+) key (?<itemKey>\d+)|"+
                                   @"(Item|item) (?<symbol>[a-zA-Z0-9_.-]+) (?<itemName>[a-zA-Z0-9_.-]+)";
 
             string optionsMatchStr = @"range (?<rangeLow>\d+) to (?<rangeHigh>\d+)";
 
             // Try to match source line with pattern
             string itemName = string.Empty;
+            int itemKey = -1;
             int itemClass = -1;
             int itemSubClass = -1;
             bool isGold = false;
@@ -170,6 +173,11 @@ namespace DaggerfallWorkshop.Game.Questing
                 if (!string.IsNullOrEmpty(match.Groups["artifact"].Value))
                     artifact = true;
 
+                // Item id (for books and potions)
+                Group itemKeyGroup = match.Groups["itemKey"];
+                if (itemKeyGroup.Success)
+                    itemKey = Parser.ParseInt(itemKeyGroup.Value);
+
                 // Set gold - this is not in the lookup table
                 if (itemName == "gold")
                     isGold = true;
@@ -196,23 +204,19 @@ namespace DaggerfallWorkshop.Game.Questing
                 if (itemClass != -1 && itemSubClass != -1 && !isGold)
                     item = CreateItem(itemClass, itemSubClass);         // Create item by class and subclass (a.k.a ItemGroup and GroupIndex)
                 else if (!string.IsNullOrEmpty(itemName) && !isGold)
-                    item = CreateItem(itemName);                        // Create by name of item in lookup table
+                    item = CreateItem(itemName, itemKey);                        // Create by name of item in lookup table
                 else if (isGold)
                     item = CreateGold(rangeLow, rangeHigh);             // Create gold pieces of amount by level or range values
                 else
                     throw new Exception(string.Format("Could not create Item from line {0}", line));
 
-                // add conversation topics from anyInfo command tag
-                AddConversationTopics();
             }
         }
 
         public override bool ExpandMacro(MacroTypes macro, out string textOut)
         {
             // Check if this item is gold pieces
-            bool isGoldPieces = false;
-            if (item.ItemGroup == ItemGroups.Currency && item.GroupIndex == 0)
-                isGoldPieces = true;
+            bool isGoldPieces = item.IsOfTemplate(ItemGroups.Currency, (int)Currency.Gold_pieces);
 
             textOut = string.Empty;
             bool result = true;
@@ -223,7 +227,7 @@ namespace DaggerfallWorkshop.Game.Questing
                     if (artifact)
                         textOut = item.shortName;
                     else
-                        textOut = (isGoldPieces) ? item.stackCount.ToString() : item.LongName;
+                        textOut = (isGoldPieces) ? item.stackCount.ToString() : GetLongName(item);
                     break;
 
                 default:                                // Macro not supported
@@ -250,9 +254,15 @@ namespace DaggerfallWorkshop.Game.Questing
 
         #region Private Methods
 
+        // Custom long name getter that prevents plant suffix being displayed in quest text
+        string GetLongName(DaggerfallUnityItem item)
+        {
+            return DaggerfallUnity.Instance.ItemHelper.ResolveItemLongName(item, false);
+        }
+
         // Create by item or artifact name
         // This gets class and subclass values from p1 and p2 of items lookup table
-        DaggerfallUnityItem CreateItem(string itemName)
+        DaggerfallUnityItem CreateItem(string itemName, int itemKey)
         {
             // Get items table
             Table itemsTable = QuestMachine.Instance.ItemsTable;
@@ -260,7 +270,7 @@ namespace DaggerfallWorkshop.Game.Questing
             {
                 int p1 = Parser.ParseInt(itemsTable.GetValue("p1", itemName));
                 int p2 = Parser.ParseInt(itemsTable.GetValue("p2", itemName));
-                return CreateItem(p1, p2);
+                return CreateItem(p1, p2, itemKey);
             }
             else
             {
@@ -269,7 +279,7 @@ namespace DaggerfallWorkshop.Game.Questing
         }
 
         // Create by item class and subclass
-        DaggerfallUnityItem CreateItem(int itemClass, int itemSubClass)
+        DaggerfallUnityItem CreateItem(int itemClass, int itemSubClass, int itemKey = -1)
         {
             // Validate
             if (itemClass == -1)
@@ -278,15 +288,20 @@ namespace DaggerfallWorkshop.Game.Questing
             DaggerfallUnityItem result;
 
             // Handle random magic items
-            if (itemClass == (int)ItemGroups.MagicItems && itemSubClass == -1)
+            if (itemClass == (int)ItemGroups.MagicItems)
             {
                 Entity.PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
-                result = ItemBuilder.CreateRandomMagicItem(playerEntity.Level, playerEntity.Gender, playerEntity.Race);
+                result = ItemBuilder.CreateRegularMagicItem(itemSubClass, playerEntity.Level, playerEntity.Gender, playerEntity.Race);
             }
             // Handle books
             else if (itemClass == (int)ItemGroups.Books)
             {
-                result = ItemBuilder.CreateRandomBook();
+                result = (itemKey != -1) ? ItemBuilder.CreateBook(itemKey) : ItemBuilder.CreateRandomBook();
+            }
+            // Handle potions
+            else if (itemClass == (int)ItemGroups.UselessItems1 && itemSubClass == 1)
+            {
+                result = (itemKey != -1) ? ItemBuilder.CreatePotion(itemKey) : ItemBuilder.CreateRandomPotion();
             }
             else
             {
@@ -304,7 +319,17 @@ namespace DaggerfallWorkshop.Game.Questing
             // Link item to quest
             result.LinkQuestItem(ParentQuest.UID, Symbol.Clone());
 
-            return result;
+            string name = result.shortName.Replace("%it", result.ItemTemplate.name);
+            QuestMachine.LogFormat(
+                ParentQuest,
+                "Generated \"{0}\" from Class {1} and Subclass {2} for item {3}",
+                name,
+                itemClass,
+                itemSubClass,
+                Symbol.Original
+            );
+
+             return result;
         }
 
         // Create stack of gold pieces
@@ -314,19 +339,34 @@ namespace DaggerfallWorkshop.Game.Questing
             int amount = 0;
             if (rangeLow == -1 || rangeHigh == -1)
             {
-                Entity.PlayerEntity player = GameManager.Instance.PlayerEntity;
+                Entity.PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
 
-                // TODO: If this is a faction quest, playerMod is (player factionrank + 1) rather than level
-                int playerMod = (player.Level / 2) + 1;
+                int playerMod = (playerEntity.Level / 2) + 1;
+                int factionMod = 50;
+                IGuild guild = null;
+                if (ParentQuest.FactionId != 0)
+                {
+                    guild = GameManager.Instance.GuildManager.GetGuild(ParentQuest.FactionId);
+                    if (guild != null && !(guild is NonMemberGuild))
+                    {
+                        // If this is a faction quest, playerMod is (player factionrank + 1) rather than level
+                        playerMod = guild.Rank + 1;
+
+                        // If this is a faction quest, factionMod = faction.power rather than 50
+                        FactionFile.FactionData factionData;
+                        if (playerEntity.FactionData.GetFactionData(ParentQuest.FactionId, out factionData))
+                            factionMod = factionData.power;
+                    }
+                }
                 if (playerMod > 10)
                     playerMod = 10;
 
-                // TODO: If this is a faction quest, factionMod = faction.power rather than 50
-                int factionMod = 50;
-
                 PlayerGPS gps = GameManager.Instance.PlayerGPS;
-                int regionPriceMod = player.RegionData[gps.CurrentRegionIndex].PriceAdjustment / 2;
+                int regionPriceMod = playerEntity.RegionData[gps.CurrentRegionIndex].PriceAdjustment / 2;
                 amount = UnityEngine.Random.Range(150 * playerMod, (200 * playerMod) + 1) * (regionPriceMod + 500) / 1000 * (factionMod + 50) / 100;
+
+                if (guild != null)
+                    amount = guild.AlterReward(amount);
             }
             else
                 amount = UnityEngine.Random.Range(rangeLow, rangeHigh + 1);
@@ -340,40 +380,6 @@ namespace DaggerfallWorkshop.Game.Questing
             result.LinkQuestItem(ParentQuest.UID, Symbol.Clone());
 
             return result;
-        }
-
-
-        void AddConversationTopics()
-        {
-            List<TextFile.Token[]> anyInfoAnswers = null;
-            List<TextFile.Token[]> anyRumorsAnswers = null;
-            if (this.InfoMessageID != -1)
-            {
-                Message message = this.ParentQuest.GetMessage(this.InfoMessageID);
-                anyInfoAnswers = new List<TextFile.Token[]>();
-                if (message != null)
-                {
-                    for (int i = 0; i < message.VariantCount; i++)
-                    {
-                        TextFile.Token[] tokens = message.GetTextTokensByVariant(i, false); // do not expand macros here (they will be expanded just in time by TalkManager class)
-                        anyInfoAnswers.Add(tokens);
-                    }
-                }
-
-                message = this.ParentQuest.GetMessage(this.RumorsMessageID);
-                anyRumorsAnswers = new List<TextFile.Token[]>();
-                if (message != null)
-                {
-                    for (int i = 0; i < message.VariantCount; i++)
-                    {
-                        TextFile.Token[] tokens = message.GetTextTokensByVariant(i, false); // do not expand macros here (they will be expanded just in time by TalkManager class)
-                        anyRumorsAnswers.Add(tokens);
-                    }
-                }                
-            }
-
-            string key = this.Symbol.Name;
-            GameManager.Instance.TalkManager.AddQuestTopicWithInfoAndRumors(this.ParentQuest.UID, this, key, TalkManager.QuestInfoResourceType.Thing, anyInfoAnswers, anyRumorsAnswers);
         }
 
         #endregion

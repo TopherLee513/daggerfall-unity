@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -103,18 +103,19 @@ namespace DaggerfallWorkshop.Game.UserInterface
         #endregion
 
         #region IEnumerable
+
         /// <summary>
-        /// Gets IEnumerator<BaseComponent> for the component collection
+        /// Gets <see cref="IEnumerator{BaseScreenComponent}"/> for the component collection
         /// for use with foreach.
         /// </summary>
-        /// <returns>IEnumerator<BaseComponent></returns>
+        /// <returns><see cref="IEnumerator"/> of screen components.</returns>
         public IEnumerator<BaseScreenComponent> GetEnumerator()
         {
             return components.GetEnumerator();
         }
 
         /// <summary>
-        /// Gets IEnumerator for the component collection.
+        /// Gets <see cref="IEnumerator"/> for the component collection.
         /// </summary>
         /// <returns>IEnumerator object.</returns>
         IEnumerator IEnumerable.GetEnumerator()

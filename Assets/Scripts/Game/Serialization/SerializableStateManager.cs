@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -17,9 +17,9 @@ using DaggerfallWorkshop.Utility;
 namespace DaggerfallWorkshop.Game.Serialization
 {
     /// <summary>
-    /// Manages stateful game objects. (implementations of ISerializableGameObject)
-    /// Used by SaveLoadManager to serialize scene state.
-    /// Uses a scene cache to persist building interiors & player owned areas.
+    /// Manages stateful game objects (implementations of <see cref="ISerializableGameObject"/>).
+    /// Used by <see cref="SaveLoadManager"/> to serialize scene state.
+    /// Uses a scene cache to persist building interiors and player owned areas.
     /// </summary>
     public class SerializableStateManager
     {
@@ -124,11 +124,26 @@ namespace DaggerfallWorkshop.Game.Serialization
             }
             else
             {
+                // Copy any permanent scenes (sans corpses) into a new cache and replace existing
                 Dictionary<string, List<object[]>> newSceneDataCache = new Dictionary<string, List<object[]>>();
                 List<object[]> sceneData;
                 foreach (string sceneName in permanentScenes)
+                {
                     if (sceneDataCache.TryGetValue(sceneName, out sceneData))
-                        newSceneDataCache[sceneName] = sceneDataCache[sceneName];
+                    {
+                        if (sceneData != null)
+                        {
+                            object[] lootContainers = sceneData[(int)StatefulGameObjectTypes.LootContainer];
+                            List<LootContainerData_v1> lootNoCorpses = new List<LootContainerData_v1>();
+                            foreach (LootContainerData_v1 loot in lootContainers)
+                                if (loot.containerType != LootContainerTypes.CorpseMarker)
+                                    lootNoCorpses.Add(loot);
+                            sceneData[(int)StatefulGameObjectTypes.LootContainer] = lootNoCorpses.ToArray();
+                        }
+                    }
+                    if (sceneData != null && sceneData.Count > 0)
+                        newSceneDataCache[sceneName] = sceneData;
+                }
                 sceneDataCache = newSceneDataCache;
             }
         }
@@ -405,6 +420,8 @@ namespace DaggerfallWorkshop.Game.Serialization
                 // Restore save data
                 SerializableEnemy serializableEnemy = go.GetComponent<SerializableEnemy>();
                 serializableEnemy.RestoreSaveData(enemies[i]);
+
+                GameManager.Instance?.RaiseOnEnemySpawnEvent(go);
             }
         }
 

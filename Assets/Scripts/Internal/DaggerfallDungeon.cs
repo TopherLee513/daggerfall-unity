@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -110,13 +110,14 @@ namespace DaggerfallWorkshop
 
             // Perform layout
             startMarker = null;
-            if (location.Name == "Orsinium")
+            if (location.MapTableData.MapId == 19021260)
                 LayoutOrsinium(ref location, importEnemies);
             else
                 LayoutDungeon(ref location, importEnemies);
 
             // Seal location
             isSet = true;
+            RaiseOnSetDungeonEvent();
         }
 
         public void ResetDungeonTextureTable()
@@ -479,5 +480,15 @@ namespace DaggerfallWorkshop
         }
 
         #endregion
+
+        /// <summary>
+        /// An event raised after a dungeon has been set and its layout has been performed.
+        /// </summary>
+        public static event Action<DaggerfallDungeon> OnSetDungeon;
+        private void RaiseOnSetDungeonEvent()
+        {
+            if (OnSetDungeon != null)
+                OnSetDungeon(this);
+        }
     }
 }

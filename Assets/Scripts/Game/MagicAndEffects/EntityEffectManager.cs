@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -37,9 +37,9 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
     {
         #region Fields
 
-        const string textDatabase = "ClassicEffects";
         const string youDontHaveTheSpellPointsMessageKey = "youDontHaveTheSpellPoints";
         const int minAcceptedSpellVersion = 1;
+        const int rerollMinimumHours = 6;
 
         const int magicCastSoundID = 349;
         const int poisonCastSoundID = 350;
@@ -66,6 +66,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         readonly List<LiveEffectBundle> instancedBundles = new List<LiveEffectBundle>();
         readonly List<LiveEffectBundle> bundlesToRemove = new List<LiveEffectBundle>();
         bool wipeAllBundles = false;
+        float timeLastCastSoundPlayed;
 
         int[] directStatMods = new int[DaggerfallStats.Count];
         int[] directSkillMods = new int[DaggerfallSkills.Count];
@@ -78,6 +79,9 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
 
         RacialOverrideEffect racialOverrideEffect;
         PassiveSpecialsEffect passiveSpecialsEffect;
+        
+        Dictionary<ulong, DaggerfallUnityItem> activeMagicItemsInRound = new Dictionary<ulong, DaggerfallUnityItem>();
+        Dictionary<ulong, DaggerfallUnityItem> itemsPendingReroll = new Dictionary<ulong, DaggerfallUnityItem>();
 
         #endregion
 
@@ -161,6 +165,11 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             EntityEffectBroker.OnNewMagicRound += EntityEffectBroker_OnNewMagicRound;
             SaveLoadManager.OnStartLoad += SaveLoadManager_OnStartLoad;
             StartGameBehaviour.OnNewGame += StartGameBehaviour_OnNewGame;
+            if (IsPlayerEntity)
+            {
+                DaggerfallRestWindow.OnSleepEnd += DaggerfallRestWindow_OnSleepEnd;
+                EntityEffectBroker.OnEndSyntheticTimeIncrease += EntityEffectBroker_OnEndSyntheticTimeIncrease;
+            }
         }
 
         private void Start()
@@ -175,6 +184,13 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         private void OnDestroy()
         {
             EntityEffectBroker.OnNewMagicRound -= EntityEffectBroker_OnNewMagicRound;
+            SaveLoadManager.OnStartLoad -= SaveLoadManager_OnStartLoad;
+            StartGameBehaviour.OnNewGame -= StartGameBehaviour_OnNewGame;
+            if (IsPlayerEntity)
+            {
+                DaggerfallRestWindow.OnSleepEnd -= DaggerfallRestWindow_OnSleepEnd;
+                EntityEffectBroker.OnEndSyntheticTimeIncrease -= EntityEffectBroker_OnEndSyntheticTimeIncrease;
+            }
         }
 
         private void Update()
@@ -240,7 +256,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                     if (GameManager.Instance.PlayerEntity.Items.Contains(ItemGroups.MiscItems, (int)MiscItems.Spellbook))
                         SetReadySpell(lastSpell);
                     else
-                        DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "noSpellbook"));
+                        DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("noSpellbook"));
                     return;
                 }
 
@@ -312,7 +328,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             // to determine whether or not it can still cast spells.
             if (IsPlayerEntity && entityBehaviour.Entity.CurrentMagicka < readySpellCastingCost && !godModeCast && !noSpellPointCost)
             {
-                DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, youDontHaveTheSpellPointsMessageKey));
+                DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText(youDontHaveTheSpellPointsMessageKey));
 
                 readySpell = null;
                 readySpellCastingCost = 0;
@@ -328,7 +344,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
 
             if (IsPlayerEntity && !instantCast)
             {
-                DaggerfallUI.AddHUDText(HardStrings.pressButtonToFireSpell, 0.4f);
+                DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("pressButtonToFireSpell"), 0.4f);
             }
 
             return true;
@@ -383,6 +399,19 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             if (readySpell == null || castInProgress)
                 return;
 
+            // Player must be in range to release a touch spell
+            // Enemies use AI to only cast touch spells within range
+            if (IsPlayerEntity && readySpell.Settings.TargetType == TargetTypes.ByTouch)
+            {
+                Vector3 aimPosition = GameManager.Instance.MainCamera.transform.position;
+                Vector3 aimDirection = GameManager.Instance.MainCamera.transform.forward;
+                if (DaggerfallMissile.GetEntityTargetInTouchRange(aimPosition, aimDirection) == null)
+                {
+                    //Debug.Log("Target entity not in range for touch spell.");
+                    return;
+                }
+            }
+
             // Deduct spellpoint cost from entity if not free (magic item, innate ability)
             if (!readySpellDoesNotCostSpellPoints)
                 entityBehaviour.Entity.DecreaseMagicka(readySpellCastingCost);
@@ -408,6 +437,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             bool showNonPlayerFailures = (flags & AssignBundleFlags.ShowNonPlayerFailures) == AssignBundleFlags.ShowNonPlayerFailures;
             bool bypassSavingThrows = (flags & AssignBundleFlags.BypassSavingThrows) == AssignBundleFlags.BypassSavingThrows;
             bool specialInfection = (flags & AssignBundleFlags.SpecialInfection) == AssignBundleFlags.SpecialInfection;
+            bool bypassChance = (flags & AssignBundleFlags.BypassChance) == AssignBundleFlags.BypassChance;
 
             // Source bundle must have one or more effects
             if (sourceBundle.Settings.Effects == null || sourceBundle.Settings.Effects.Length == 0)
@@ -422,6 +452,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             instancedBundle.bundleType = sourceBundle.Settings.BundleType;
             instancedBundle.targetType = sourceBundle.Settings.TargetType;
             instancedBundle.elementType = sourceBundle.Settings.ElementType;
+            instancedBundle.runtimeFlags = sourceBundle.Settings.RuntimeFlags;
             instancedBundle.name = sourceBundle.Settings.Name;
             instancedBundle.iconIndex = sourceBundle.Settings.IconIndex;
             instancedBundle.icon = sourceBundle.Settings.Icon;
@@ -460,7 +491,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                 // Set parent bundle
                 effect.ParentBundle = instancedBundle;
 
-                // Spell Absorption and Reflection - must have a caster entity set
+                // Spell Absorption, Reflection, Resistance - must have a caster entity set
                 if (sourceBundle.CasterEntityBehaviour)
                 {
                     // Spell Absorption
@@ -471,7 +502,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                         entityBehaviour.Entity.IncreaseMagicka(absorbSpellPoints);
 
                         // Output "Spell was absorbed."
-                        DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "spellAbsorbed"));
+                        DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("spellAbsorbed"));
 
                         continue;
                     }
@@ -479,17 +510,18 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                     // Spell Reflection
                     if (!bypassSavingThrows && sourceBundle.Settings.BundleType == BundleTypes.Spell && TryReflection(sourceBundle))
                         continue;
-                }
 
-                // Spell Resistance
-                if (!bypassSavingThrows && sourceBundle.Settings.BundleType == BundleTypes.Spell && TryResistance())
-                    continue;
+                    // Spell Resistance
+                    if (!bypassSavingThrows && sourceBundle.Settings.BundleType == BundleTypes.Spell && TryResistance(sourceBundle))
+                        continue;
+                }
 
                 // Start effect
                 effect.Start(this, sourceBundle.CasterEntityBehaviour);
 
                 // Do not proceed if chance failed
-                if (effect.Properties.SupportChance &&
+                if (!bypassChance &&
+                    effect.Properties.SupportChance &&
                     effect.Properties.ChanceFunction == ChanceFunction.OnCast &&
                     !effect.ChanceSuccess)
                 {
@@ -497,12 +529,12 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                     if (IsPlayerEntity && sourceBundle.Settings.TargetType == TargetTypes.CasterOnly)
                     {
                         // Output "Spell effect failed." for caster only spells
-                        DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "spellEffectFailed"));
+                        DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("spellEffectFailed"));
                     }
                     else if (IsPlayerEntity || showNonPlayerFailures)
                     {
                         // Output "Save versus spell made." for external contact spells
-                        DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "saveVersusSpellMade"));
+                        DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("saveVersusSpellMade"));
                     }
 
                     continue;
@@ -516,10 +548,14 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                     continue;
                 }
 
-                // Saving throw handling for effects without magnitude
+                // Saving throw handling
                 // For effects without magnitude (e.g. paralysis) the entity has a chance to save against entire effect using a saving throw
+                // For effects with magnitude (e.g. most Destruction magic) this is handled later when the effect rolls for magnitude
                 // Self-cast spells (e.g. self heals and buffs) should never be saved against
-                if (!bypassSavingThrows && !effect.BypassSavingThrows && !effect.Properties.SupportMagnitude && sourceBundle.Settings.TargetType != TargetTypes.CasterOnly)
+                if (!bypassSavingThrows &&
+                    !effect.BypassSavingThrows &&
+                    !effect.Properties.SupportMagnitude &&
+                    sourceBundle.Settings.TargetType != TargetTypes.CasterOnly)
                 {
                     // Immune if saving throw made
                     if (FormulaHelper.SavingThrow(effect, entityBehaviour.Entity) == 0)
@@ -527,7 +563,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                         if (IsPlayerEntity || showNonPlayerFailures)
                         {
                             // Output "Save versus spell made." for external contact spells
-                            DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "saveVersusSpellMade"));
+                            DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("saveVersusSpellMade"));
                         }
                         continue;
                     }
@@ -558,27 +594,52 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         }
 
         /// <summary>
-        /// Checks if peered entity is globally immune to disease from career or effect system.
+        /// Checks if peered entity is globally immune to disease from career, race, and effect system.
         /// </summary>
         /// <returns>True if entity immune to disease.</returns>
         public bool IsEntityImmuneToDisease()
         {
-            return entityBehaviour.Entity.Career.Disease == DFCareer.Tolerance.Immune || entityBehaviour.Entity.IsImmuneToDisease;
+            // Entity is hard immune from career or effect
+            if (entityBehaviour.Entity.Career.Disease == DFCareer.Tolerance.Immune || entityBehaviour.Entity.IsImmuneToDisease)
+                return true;
+
+            // Player entity is hard immune from racial template unless they have an overriding career weakness
+            if (IsPlayerEntity && (((PlayerEntity)entityBehaviour.Entity).GetLiveRaceTemplate().ImmunityFlags & DFCareer.EffectFlags.Disease) != 0)
+            {
+                return entityBehaviour.Entity.Career.Disease != DFCareer.Tolerance.LowTolerance &&
+                       entityBehaviour.Entity.Career.Disease != DFCareer.Tolerance.CriticalWeakness;
+            }
+
+            // Not hard immune - fallback to saving throws where entity may still have enhanced resistance
+            return false;
         }
 
         /// <summary>
-        /// Checks if peered entity is globally immune to paralysis from career or effect system.
+        /// Checks if peered entity is globally immune to paralysis from career, race, and effect system.
         /// </summary>
         /// <returns>True if entity immune to paralysis.</returns>
         public bool IsEntityImmuneToParalysis()
         {
-            return entityBehaviour.Entity.Career.Paralysis == DFCareer.Tolerance.Immune || entityBehaviour.Entity.IsImmuneToParalysis;
+            // Entity is hard immune from career or effect
+            if (entityBehaviour.Entity.Career.Paralysis == DFCareer.Tolerance.Immune || entityBehaviour.Entity.IsImmuneToParalysis)
+                return true;
+
+            // Player entity is hard immune from racial template unless they have an overriding career weakness
+            if (IsPlayerEntity && (((PlayerEntity)entityBehaviour.Entity).GetLiveRaceTemplate().ImmunityFlags & DFCareer.EffectFlags.Paralysis) != 0)
+            {
+                return entityBehaviour.Entity.Career.Paralysis != DFCareer.Tolerance.LowTolerance &&
+                       entityBehaviour.Entity.Career.Paralysis != DFCareer.Tolerance.CriticalWeakness;
+            }
+
+            // Not hard immune - fallback to saving throws where entity may still have enhanced resistance
+            return false;
         }
 
         /// <summary>
         /// Searches all effects in all bundles to find incumbent of type T.
         /// </summary>
-        /// <typeparam name="T">Found incumbent effect of type T or null.</typeparam>
+        /// <typeparam name="T">Effect class to search for.</typeparam>
+        /// <returns>Found incumbent effect of type T or null.</returns>
         public IEntityEffect FindIncumbentEffect<T>()
         {
             foreach (LiveEffectBundle bundle in instancedBundles)
@@ -594,9 +655,30 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         }
 
         /// <summary>
+        /// Searches all effects in all bundles to find all incumbents of type T.
+        /// Useful for finding all effects inheriting from a specific parent effect.
+        /// </summary>
+        /// <typeparam name="T">Effect class to search for.</typeparam>
+        /// <returns>All found incumbent effect of type T. Can be null or empty.</returns>
+        public IEntityEffect[] FindIncumbentEffects<T>()
+        {
+            List<IEntityEffect> effects = new List<IEntityEffect>();
+            foreach (LiveEffectBundle bundle in instancedBundles)
+            {
+                foreach (IEntityEffect effect in bundle.liveEffects)
+                {
+                    if (effect is T)
+                        effects.Add(effect);
+                }
+            }
+
+            return effects.ToArray();
+        }
+
+        /// <summary>
         /// Gets current racial override effect if one is present.
         /// Racial override is a special case effect that is cached when started/resumed on entity.
-        /// Can still search using FindIncumbentEffect<RacialOverrideEffect>(), but this method will be more efficient.
+        /// While is possible to use <see cref="FindIncumbentEffect{RacialOverrideEffect}()"/>, this method is more efficient.
         /// </summary>
         /// <returns>RacialOverrideEffect or null.</returns>
         public RacialOverrideEffect GetRacialOverrideEffect()
@@ -632,7 +714,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                     int damage = Mathf.Abs(mod);
                     if (remaining > damage)
                     {
-                        effect.HealAttributeDamage(stat, remaining - damage);
+                        effect.HealAttributeDamage(stat, damage);
                         remaining -= damage;
                     }
                     else
@@ -667,6 +749,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         private void WipeAllBundles()
         {
             instancedBundles.Clear();
+            itemsPendingReroll.Clear();
             RaiseOnRemoveBundle(null);
             racialOverrideEffect = null;
             passiveSpecialsEffect = null;
@@ -826,13 +909,14 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             EffectBundleSettings bundleSettings = new EffectBundleSettings()
             {
                 Version = EntityEffectBroker.CurrentSpellVersion,
+                Name = potionRecipe.DisplayName,
                 BundleType = BundleTypes.Potion,
                 TargetType = TargetTypes.CasterOnly,
                 Effects = potionEffects,
             };
             // Assign effect bundle.
             EntityEffectBundle bundle = new EntityEffectBundle(bundleSettings, entityBehaviour);
-            AssignBundle(bundle, AssignBundleFlags.BypassSavingThrows);
+            AssignBundle(bundle, AssignBundleFlags.BypassSavingThrows | AssignBundleFlags.BypassChance);
 
             // Play cast sound on drink for player only.
             if (IsPlayerEntity)
@@ -905,7 +989,18 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                 // Breaks payload
                 if ((flags & EnchantmentPayloadFlags.Breaks) == EnchantmentPayloadFlags.Breaks && effectTemplate.HasEnchantmentPayloadFlags(EnchantmentPayloadFlags.Breaks))
                     BrokenItem(effectTemplate, sourceItem, settings);
-                    
+
+                // Do not call following payloads if item has broken
+                if (sourceItem.currentCondition > 0)
+                {
+                    // MagicRound payload
+                    if ((flags & EnchantmentPayloadFlags.MagicRound) == EnchantmentPayloadFlags.MagicRound && effectTemplate.HasEnchantmentPayloadFlags(EnchantmentPayloadFlags.MagicRound))
+                        MagicRoundCallback(effectTemplate, sourceItem, settings);
+
+                    // RerollEffect payload
+                    if ((flags & EnchantmentPayloadFlags.RerollEffect) == EnchantmentPayloadFlags.RerollEffect && effectTemplate.HasEnchantmentPayloadFlags(EnchantmentPayloadFlags.RerollEffect))
+                        RerollEffectCallback(effectTemplate, sourceItem, settings);
+                }
             }
 
             // Clamp damageOut to 0
@@ -997,6 +1092,20 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             effectTemplate.EnchantmentPayloadCallback(EnchantmentPayloadFlags.Breaks, param, entityBehaviour, entityBehaviour, item);
         }
 
+        void MagicRoundCallback(IEntityEffect effectTemplate, DaggerfallUnityItem item, EnchantmentSettings settings)
+        {
+            // MagicRound payload callback
+            EnchantmentParam param = new EnchantmentParam() { ClassicParam = settings.ClassicParam, CustomParam = settings.CustomParam };
+            effectTemplate.EnchantmentPayloadCallback(EnchantmentPayloadFlags.MagicRound, param, entityBehaviour, entityBehaviour, item);
+        }
+
+        void RerollEffectCallback(IEntityEffect effectTemplate, DaggerfallUnityItem item, EnchantmentSettings settings)
+        {
+            // RerollEffect payload callback
+            EnchantmentParam param = new EnchantmentParam() { ClassicParam = settings.ClassicParam, CustomParam = settings.CustomParam };
+            effectTemplate.EnchantmentPayloadCallback(EnchantmentPayloadFlags.RerollEffect, param, entityBehaviour, entityBehaviour, item);
+        }
+
         #endregion
 
         #region Spell Absorption
@@ -1048,11 +1157,11 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
 
             // Handle effect-based absorption
             SpellAbsorption absorbEffect = FindIncumbentEffect<SpellAbsorption>() as SpellAbsorption;
-            if (absorbEffect != null && TryEffectBasedAbsorption(effect, absorbEffect, casterEntity))
+            if (absorbEffect != null && TryEffectBasedAbsorption(effect, absorbEffect, entityBehaviour.Entity))
                 return true;
 
             // Handle career-based absorption
-            if (entityBehaviour.Entity.Career.SpellAbsorption != DFCareer.SpellAbsorptionFlags.None && TryCareerBasedAbsorption(effect, casterEntity))
+            if (entityBehaviour.Entity.Career.SpellAbsorption != DFCareer.SpellAbsorptionFlags.None && TryCareerBasedAbsorption(effect, entityBehaviour.Entity))
                 return true;
 
             // Handle persistant absorption (e.g. special advantage general/day/night or from weapon effects)
@@ -1063,9 +1172,9 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         }
 
         /// <summary>
-        /// Tests incoming effect for spell reflection.
+        /// Tests incoming spell bundle for reflection.
         /// </summary>
-        /// <param name="casterEntity">Source caster entity behaviour for spell reflect.</param>
+        /// <param name="sourceBundle">Source bundle of spell to reflect.</param>
         /// <returns>True if reflected.</returns>
         bool TryReflection(EntityEffectBundle sourceBundle)
         {
@@ -1079,6 +1188,10 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             if (reflectEffect == null)
                 return false;
 
+            // Do not reflect spells from same caster onto self
+            if (sourceBundle.CasterEntityBehaviour == EntityBehaviour)
+                return false;
+
             // Roll for reflection chance
             if (reflectEffect.RollChance())
             {
@@ -1090,7 +1203,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
 
                 // Output "Spell was reflected." when player is the one reflecting spell
                 if (IsPlayerEntity)
-                    DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "spellReflected"));
+                    DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("spellReflected"));
 
                 return true;
             }
@@ -1101,12 +1214,18 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         /// <summary>
         /// Tests incoming effect for spell resistance.
         /// </summary>
+        /// <param name="sourceBundle">Source bundle of spell to reflect.</param>
         /// <returns>True if resisted.</returns>
-        bool TryResistance()
+        bool TryResistance(EntityEffectBundle sourceBundle)
         {
             // Entity must be resisting
             SpellResistance resistEffect = FindIncumbentEffect<SpellResistance>() as SpellResistance;
             if (resistEffect == null)
+                return false;
+
+            // Do not resist "caster only" self-cast spells
+            // Allow to resist "other target" spells, e.g. when caught inside own AOE radius or spell reflected
+            if (sourceBundle.Settings.TargetType == TargetTypes.CasterOnly)
                 return false;
 
             // Roll for resistance chance
@@ -1114,7 +1233,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             {
                 // Output "Spell was resisted." when player is the one resisting spell
                 if (IsPlayerEntity)
-                    DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "spellResisted"));
+                    DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("spellResisted"));
 
                 return true;
             }
@@ -1138,17 +1257,17 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             return spellPointCost;
         }
 
-        bool TryEffectBasedAbsorption(IEntityEffect effect, SpellAbsorption absorbEffect, DaggerfallEntity casterEntity)
+        bool TryEffectBasedAbsorption(IEntityEffect effect, SpellAbsorption absorbEffect, DaggerfallEntity entity)
         {
-            int chance = absorbEffect.Settings.ChanceBase + absorbEffect.Settings.ChancePlus * (int)Mathf.Floor(casterEntity.Level / absorbEffect.Settings.ChancePerLevel);
+            int chance = absorbEffect.Settings.ChanceBase + absorbEffect.Settings.ChancePlus * (int)Mathf.Floor(entity.Level / absorbEffect.Settings.ChancePerLevel);
 
             return Dice100.SuccessRoll(chance);
         }
 
-        bool TryCareerBasedAbsorption(IEntityEffect effect, DaggerfallEntity casterEntity)
+        bool TryCareerBasedAbsorption(IEntityEffect effect, DaggerfallEntity entity)
         {
             // Always resists
-            DFCareer.SpellAbsorptionFlags spellAbsorption = casterEntity.Career.SpellAbsorption;
+            DFCareer.SpellAbsorptionFlags spellAbsorption = entity.Career.SpellAbsorption;
             if (spellAbsorption == DFCareer.SpellAbsorptionFlags.Always)
                 return true;
 
@@ -1399,6 +1518,56 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             }
         }
 
+        public void CureAllAttributes()
+        {
+            foreach (LiveEffectBundle bundle in instancedBundles)
+            {
+                foreach (IEntityEffect effect in bundle.liveEffects)
+                {
+                    (effect as BaseEntityEffect).CureAttributeDamage();
+                }
+            }
+        }
+
+        public void CureAllSkills()
+        {
+            foreach (LiveEffectBundle bundle in instancedBundles)
+            {
+                foreach (IEntityEffect effect in bundle.liveEffects)
+                {
+                    (effect as BaseEntityEffect).CureSkillDamage();
+                }
+            }
+        }
+
+        public bool HasDamagedAttributes()
+        {
+            foreach (LiveEffectBundle bundle in instancedBundles)
+            {
+                foreach (IEntityEffect effect in bundle.liveEffects)
+                {
+                    if (!(effect as BaseEntityEffect).AllAttributesHealed())
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool HasDamagedSkills()
+        {
+            foreach (LiveEffectBundle bundle in instancedBundles)
+            {
+                foreach (IEntityEffect effect in bundle.liveEffects)
+                {
+                    if (!(effect as BaseEntityEffect).AllSkillsHealed())
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
         public void CureAll()
         {
             DaggerfallEntity entity = entityBehaviour.Entity;
@@ -1407,6 +1576,8 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             entity.CurrentMagicka = entity.MaxMagicka;
             CureAllPoisons();
             CureAllDiseases();
+            CureAllAttributes();
+            CureAllSkills();
         }
 
         public bool HasVampirism()
@@ -1417,6 +1588,14 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         public bool HasLycanthropy()
         {
             return racialOverrideEffect is LycanthropyEffect;
+        }
+
+        public LycanthropyTypes LycanthropyType()
+        {
+            if (HasLycanthropy())
+                return (racialOverrideEffect as LycanthropyEffect).InfectionType;
+            else
+                return LycanthropyTypes.None;
         }
 
         public bool IsTransformedLycanthrope()
@@ -1488,6 +1667,12 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                         effect.ConstantEffect();
                 }
             }
+
+            // MaxMagickaModifier stacks with no upper limit
+            // This can cause player to lose current spellpoints when loading game or stacking effects using this modifier
+            // So clamp spellpoints to current max only after applying all constant effects for this entity
+            if (entityBehaviour.Entity.CurrentMagicka > entityBehaviour.Entity.MaxMagicka)
+                entityBehaviour.Entity.CurrentMagicka = entityBehaviour.Entity.MaxMagicka;
         }
 
         /// <summary>
@@ -1495,17 +1680,19 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
         /// </summary>
         void DoMagicRound()
         {
-            // Do nothing further if no bundles, entity has perished, or object disabled
-            if (instancedBundles.Count == 0 || entityBehaviour.Entity.CurrentHealth <= 0 || !entityBehaviour.enabled)
-                return;
-
             // Clear direct mods
             Array.Clear(directStatMods, 0, DaggerfallStats.Count);
             Array.Clear(directSkillMods, 0, DaggerfallSkills.Count);
             if (IsPlayerEntity)
                 (entityBehaviour.Entity as PlayerEntity).ClearReactionMods();
 
+            // Do nothing further if no bundles, entity has perished, or object disabled
+            if (instancedBundles.Count == 0 || entityBehaviour.Entity.CurrentHealth <= 0 || !entityBehaviour.enabled)
+                return;
+
             // Run all bundles
+            activeMagicItemsInRound.Clear();
+            uint currentTime = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime();
             foreach (LiveEffectBundle bundle in instancedBundles)
             {
                 // Run effects for this bundle
@@ -1513,26 +1700,42 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                 foreach (IEntityEffect effect in bundle.liveEffects)
                 {
                     // Update effects with remaining rounds, item effects are always ticked
-                    if (effect.RoundsRemaining > 0 || bundle.fromEquippedItem != null)
-                    {
+                    hasRemainingEffectRounds = effect.RoundsRemaining > 0;
+                    if (hasRemainingEffectRounds || bundle.fromEquippedItem != null)
                         effect.MagicRound();
-                        if (effect.RoundsRemaining > 0)
-                            hasRemainingEffectRounds = true;
-                    }
                 }
 
-                // If bundle has an item source keep it alive until item breaks or is unequipped
-                if (bundle.fromEquippedItem != null)
+                if (bundle.fromEquippedItem != null && bundle.fromEquippedItem.IsEquipped)
                 {
+                    // If bundle has an item source keep it alive until item breaks or is unequipped
                     hasRemainingEffectRounds = true;
 
-                    // TODO: Manage item damage the longer it is equipped
-                    // See http://en.uesp.net/wiki/Daggerfall:Magical_Items#Durability_of_Magical_Items
+                    if (IsPlayerEntity)
+                    {
+                        // Track individual held items for magic round callback
+                        if (!activeMagicItemsInRound.ContainsKey(bundle.fromEquippedItem.UID))
+                            activeMagicItemsInRound.Add(bundle.fromEquippedItem.UID, bundle.fromEquippedItem);
+
+                        // Schedule items pending reroll
+                        uint hoursSinceLastReroll = (currentTime - bundle.fromEquippedItem.timeEffectsLastRerolled) / DaggerfallDateTime.MinutesPerHour;
+                        if (hoursSinceLastReroll >= rerollMinimumHours && !itemsPendingReroll.ContainsKey(bundle.fromEquippedItem.UID))
+                            itemsPendingReroll.Add(bundle.fromEquippedItem.UID, bundle.fromEquippedItem);
+                    }
                 }
 
                 // Expire this bundle once all effects have 0 rounds remaining
                 if (!hasRemainingEffectRounds)
                     bundlesToRemove.Add(bundle);
+            }
+
+            // Do MagicRound payload callback for each item
+            if (activeMagicItemsInRound.Count > 0)
+            {
+                foreach (DaggerfallUnityItem item in activeMagicItemsInRound.Values)
+                {
+                    DoItemEnchantmentPayloads(EnchantmentPayloadFlags.MagicRound, item);
+                }
+                activeMagicItemsInRound.Clear();
             }
 
             RemovePendingBundles();
@@ -1621,10 +1824,10 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             entityBehaviour.Entity.Skills.AssignMods(combinedSkillMods);
             entityBehaviour.Entity.Resistances.AssignMods(combinedResistanceMods);
 
-            // Kill host if any stat is reduced to 1
+            // Kill host if any stat is reduced to 0 live total
             for (int i = 0; i < DaggerfallStats.Count; i++)
             {
-                if (entityBehaviour.Entity.Stats.GetLiveStatValue(i) == 1)
+                if (entityBehaviour.Entity.Stats.GetLiveStatValue(i) == 0)
                 {
                     entityBehaviour.Entity.CurrentHealth = 0;
                     return;
@@ -1698,7 +1901,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                 // Output "You are silenced." if the host manager is player
                 // Just to let them know why casting isn't working
                 if (entityBehaviour == GameManager.Instance.PlayerEntityBehaviour)
-                    DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "youAreSilenced"), 1.5f);
+                    DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("youAreSilenced"), 1.5f);
 
                 readySpell = null;
                 return true;
@@ -1707,14 +1910,20 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             return false;
         }
 
-        public void PlayCastSound(DaggerfallEntityBehaviour casterEntityBehaviour, int castSoundID)
+        public void PlayCastSound(DaggerfallEntityBehaviour casterEntityBehaviour, int castSoundID, bool throttle = false)
         {
+            // Throttle casting sound to once per 0.5f seconds to prevent playing overlapping effects on item equip/recast
+            if (throttle & Time.realtimeSinceStartup - timeLastCastSoundPlayed < 0.5f)
+                return;
+
             if (casterEntityBehaviour)
             {
                 DaggerfallAudioSource audioSource = casterEntityBehaviour.GetComponent<DaggerfallAudioSource>();
                 if (castSoundID != -1 && audioSource)
                     audioSource.PlayOneShot((uint)castSoundID);
             }
+
+            timeLastCastSoundPlayed = Time.realtimeSinceStartup;
         }
 
         void TallyPlayerReadySpellEffectSkills()
@@ -1752,6 +1961,42 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                 Effects = new EffectEntry[] { new EffectEntry(PassiveSpecialsEffect.EffectKey) },
             };
             AssignBundle(new EntityEffectBundle(settings, entityBehaviour), AssignBundleFlags.BypassSavingThrows);
+        }
+
+        void RerollItemEffects()
+        {
+            // Must have at least one item pending reroll
+            if (itemsPendingReroll.Count == 0)
+                return;
+
+            // Recast enchantments in item flagged for reroll
+            foreach (DaggerfallUnityItem item in itemsPendingReroll.Values)
+            {
+                Debug.LogFormat("Rerolling flagged item effects on {0}", item.LongName);
+
+                // Schedule live bundles from this item to be removed
+                foreach (LiveEffectBundle bundle in instancedBundles)
+                {
+                    if (bundle.fromEquippedItem != null && bundle.fromEquippedItem.UID == item.UID &&
+                        (bundle.runtimeFlags & BundleRuntimeFlags.ItemRecastEnabled) == BundleRuntimeFlags.ItemRecastEnabled)
+                    {
+                        bundlesToRemove.Add(bundle);
+                    }
+                }
+                RemovePendingBundles();
+
+                if (item.IsEquipped)
+                {
+                    // Execute reroll callbacks on item if still equipped
+                    DoItemEnchantmentPayloads(EnchantmentPayloadFlags.RerollEffect, item);
+
+                    // Update recast time in item
+                    item.timeEffectsLastRerolled = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime();
+                }
+            }
+
+            // Clean up
+            itemsPendingReroll.Clear();
         }
 
         #endregion
@@ -1878,6 +2123,16 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             //Debug.LogFormat("Cleared all effect bundles after death of {0}", entity.Name);
         }
 
+        private void DaggerfallRestWindow_OnSleepEnd()
+        {
+            RerollItemEffects();
+        }
+
+        private void EntityEffectBroker_OnEndSyntheticTimeIncrease()
+        {
+            RerollItemEffects();
+        }
+
         #endregion
 
         #region Serialization
@@ -1889,6 +2144,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
             public BundleTypes bundleType;
             public TargetTypes targetType;
             public ElementTypes elementType;
+            public BundleRuntimeFlags runtimeFlags;
             public string name;
             public int iconIndex;
             public SpellIcon icon;
@@ -1931,6 +2187,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                 bundleData.bundleType = bundle.bundleType;
                 bundleData.targetType = bundle.targetType;
                 bundleData.elementType = bundle.elementType;
+                bundleData.runtimeFlags = bundle.runtimeFlags;
                 bundleData.name = bundle.name;
                 bundleData.iconIndex = bundle.iconIndex;
                 bundleData.icon = bundle.icon;
@@ -1993,6 +2250,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects
                 instancedBundle.bundleType = bundleData.bundleType;
                 instancedBundle.targetType = bundleData.targetType;
                 instancedBundle.elementType = bundleData.elementType;
+                instancedBundle.runtimeFlags = bundleData.runtimeFlags;
                 instancedBundle.name = bundleData.name;
                 instancedBundle.iconIndex = bundleData.iconIndex;
                 instancedBundle.icon = bundleData.icon;

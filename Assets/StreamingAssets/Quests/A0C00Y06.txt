@@ -6,6 +6,7 @@
 -- QuestId: 6
 Messages: 15
 Quest: A0C00Y06
+DisplayName: An Unexpected Journey
 -- Message panels
 QRC:
 
@@ -47,7 +48,7 @@ Message:  1011
 
 Message:  1012
 <ce>                       Know me for who I really
-<ce>                      am. I am your mortal enemy
+<ce>                      am. I am your mortal enemy,
 <ce>                          _traitor_! I have a
 <ce>                       special fate in store for
 <ce>                                 you.
@@ -62,9 +63,9 @@ Message:  1013
 
 Message:  1014
 <ce>                         I don't know how you
-<ce>                       escaped from ___dungeon_
+<ce>                       escaped from ___dungeon_,
 <ce>                         %pcf. It won't do you
-<ce>                       much good though. Prepare
+<ce>                       much good, though. Prepare
 <ce>                                to die!
 
 
@@ -97,7 +98,6 @@ Place _hidingplace_ local random
 
 Clock _escapetime_ 00:00 0 flag 1 range 0 5
 Clock _shortdelay_ 00:01 0 flag 1 range 0 1
-Clock _delay_ 00:10 00:30
 
 Foe _mtraitor_ is Mage
 
@@ -119,7 +119,8 @@ _clickonenemy_ task:
 
 _traitordead_ task:
 	killed 1 _mtraitor_ 
-	start timer _delay_ 
+	end quest 
+--removed unnecessary delay
 
 _teleportpc_ task:
 	pc at _hidingplace_ set _revenge_ 
@@ -149,6 +150,3 @@ _findtraitor_ task:
 _clearclick_ task:
 	when _clickqgiver_ and not _teleportpc_ 
 	clear _clickqgiver_ 
-
-_delay_ task:
-	end quest 

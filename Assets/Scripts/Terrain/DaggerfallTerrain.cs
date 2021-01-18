@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -185,9 +185,9 @@ namespace DaggerfallWorkshop
         /// 1) BeginMapPixelDataUpdate - Schedules terrain data update using jobs system.
         /// 2) CompleteMapPixelDataUpdate - Completes terrain data update using jobs system.
         /// </summary>
-        /// <param name="terrainTexturing">Instance of TerrainTexturing class to use.</param>
+        /// <param name="terrainTexturing">Instance of ITerrainTexturing implementation class to use.</param>
         /// <returns>JobHandle of the scheduled jobs</returns>
-        public JobHandle BeginMapPixelDataUpdate(TerrainTexturing terrainTexturing = null)
+        public JobHandle BeginMapPixelDataUpdate(ITerrainTexturing terrainTexturing = null)
         {
             // Get basic terrain data.
             MapData = TerrainHelper.GetMapPixelData(dfUnity.ContentReader, MapPixelX, MapPixelY);
@@ -221,8 +221,13 @@ namespace DaggerfallWorkshop
                 // Set location tiles.
                 TerrainHelper.SetLocationTiles(ref MapData);
 
-                // Schedule job to blend and flatten location heights. (depends on SetLocationTiles being done first)
-                blendLocationTerrainJobHandle = TerrainHelper.ScheduleBlendLocationTerrainJob(ref MapData, calcAvgMaxHeightJobHandle);
+                if (!dfUnity.TerrainSampler.IsLocationTerrainBlended())
+                {
+                    // Schedule job to blend and flatten location heights. (depends on SetLocationTiles being done first)
+                    blendLocationTerrainJobHandle = TerrainHelper.ScheduleBlendLocationTerrainJob(ref MapData, calcAvgMaxHeightJobHandle);
+                }
+                else
+                    blendLocationTerrainJobHandle = calcAvgMaxHeightJobHandle;
             }
             else
                 blendLocationTerrainJobHandle = generateHeightmapSamplesJobHandle;
@@ -240,8 +245,8 @@ namespace DaggerfallWorkshop
         /// <summary>
         /// Complete terrain data update using jobs system. (second of a two stage process)
         /// </summary>
-        /// <param name="terrainTexturing">Instance of TerrainTexturing class to use.</param>
-        public void CompleteMapPixelDataUpdate(TerrainTexturing terrainTexturing = null)
+        /// <param name="terrainTexturing">Instance of ITerrainTexturing implementation class to use.</param>
+        public void CompleteMapPixelDataUpdate(ITerrainTexturing terrainTexturing = null)
         {
             // Convert heightmap data back to standard managed 2d array.
             MapData.heightmapSamples = new float[heightmapDim, heightmapDim];
@@ -336,7 +341,7 @@ namespace DaggerfallWorkshop
 
             // Promote material
             terrain.materialTemplate = terrainMaterial;
-            terrain.materialType = Terrain.MaterialType.Custom;
+            terrain.materialType = Terrain.MaterialType.Custom; // TODO: Terrain.MaterialType is now obsolete
 
             // Promote heights
             Vector3 size = terrain.terrainData.size;

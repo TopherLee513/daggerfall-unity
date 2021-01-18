@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -233,7 +233,7 @@ namespace DaggerfallWorkshop.Utility
             throw new NotImplementedException();
         }
 
-        public virtual string LocationDirection()
+        public virtual string Direction()
         {   // %di
             throw new NotImplementedException();
         }
@@ -637,6 +637,12 @@ namespace DaggerfallWorkshop.Utility
         public virtual string Q12b()
         {
             // %q12b
+            throw new NotImplementedException();
+        }
+
+        public virtual string ImperialName()
+        {
+            // %imp
             throw new NotImplementedException();
         }
     }

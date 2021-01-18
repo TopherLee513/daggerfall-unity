@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -25,6 +25,13 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
     {
         static readonly string moviePath = Path.Combine(Application.streamingAssetsPath, "Movies");
 
+// https://docs.unity3d.com/Manual/VideoSources-FileCompatibility.html
+#if !UNITY_STANDALONE_LINUX
+        static readonly string videoExtension = ".mp4";
+#else
+        static readonly string videoExtension = ".webm";
+#endif
+
         /// <summary>
         /// Path to custom movies on disk.
         /// </summary>
@@ -49,7 +56,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
                     name = name.Substring(0, index);
 
                 // Seek from loose files
-                string path = Path.Combine(moviePath, name + ".mp4");
+                string path = Path.Combine(moviePath, name + videoExtension);
                 if (File.Exists(path))
                 {
                     videoPlayerDrawer = new VideoPlayerDrawer(path);

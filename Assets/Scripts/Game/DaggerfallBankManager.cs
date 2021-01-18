@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -20,6 +20,7 @@ using DaggerfallWorkshop.Game.Items;
 using DaggerfallConnect.Utility;
 using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
+using DaggerfallWorkshop.Game.UserInterfaceWindows;
 
 namespace DaggerfallWorkshop.Game.Banking
 {
@@ -420,14 +421,15 @@ namespace DaggerfallWorkshop.Game.Banking
             houses[regionIndex].buildingKey = house.buildingKey;
 
             // Ensure building is discovered
-            GameManager.Instance.PlayerGPS.DiscoverBuilding(house.buildingKey);
+            PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
+            GameManager.Instance.PlayerGPS.DiscoverBuilding(house.buildingKey, TextManager.Instance.GetLocalizedText("playerResidence").Replace("%s", playerEntity.Name));
 
             // Add interior scene to permanent list
             SaveLoadManager.StateManager.AddPermanentScene(DaggerfallInterior.GetSceneName(mapID, house.buildingKey));
 
             // Add note to journal
-            GameManager.Instance.PlayerEntity.Notebook.AddNote(
-                TextManager.Instance.GetText("DaggerfallUI", "houseDeed").Replace("%town", location.Name).Replace("%region", MapsFile.RegionNames[regionIndex]));
+            playerEntity.Notebook.AddNote(
+                TextManager.Instance.GetLocalizedText("houseDeed").Replace("%town", location.Name).Replace("%region", MapsFile.RegionNames[regionIndex]));
         }
 
         public static TransactionResult SellHouse(int regionIndex)
@@ -440,6 +442,7 @@ namespace DaggerfallWorkshop.Game.Banking
                 {
                     BankAccounts[regionIndex].accountGold += GetHouseSellPrice(house);
                     SaveLoadManager.StateManager.RemovePermanentScene(DaggerfallInterior.GetSceneName(houses[regionIndex].mapID, house.buildingKey));
+                    GameManager.Instance.PlayerGPS.UndiscoverBuilding(house.buildingKey);
                     houses[regionIndex] = new HouseData_v1() { regionIndex = regionIndex };
                 }
             }

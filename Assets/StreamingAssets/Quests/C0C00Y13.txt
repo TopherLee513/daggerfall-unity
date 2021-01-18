@@ -92,9 +92,7 @@ Person _qgiver_ group Questor male
 Person _priest_ group Group_5.0 female
 Person _enemy_ face 176 group Local_4.0
 
-
 Clock _traveltime_ 00:00 0 flag 1 range 1 2
-Clock _delay_ 01:00 0 flag 1 range 0 1
 
 Foe _thief_ is Thief
 Foe _spellsword_ is Spellsword
@@ -105,7 +103,6 @@ Foe _spellsword_ is Spellsword
 	start timer _traveltime_ 
 	log 1010 step 0 
 	get item _religitem_ 
-	create npc _priest_ 
 
 _traveltime_ task:
 	change repute with _qgiver_ by -5 
@@ -114,11 +111,8 @@ _traveltime_ task:
 _questdone_ task:
 	toting _religitem_ and _priest_ clicked 
 	give pc nothing 
-	start timer _delay_ 
+	end quest 
 
 _S.02_ task:
 	injured _spellsword_ saying 1011 
 	injured _thief_ saying 1011 
-
-_delay_ task:
-	end quest 

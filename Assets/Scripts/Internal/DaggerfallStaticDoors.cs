@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -35,19 +35,56 @@ namespace DaggerfallWorkshop
             //// Debug trigger placement at start
             //for (int i = 0; i < Doors.Length; i++)
             //{
+            //    Quaternion buildingRotation = GameObjectHelper.QuaternionFromMatrix(Doors[i].buildingMatrix);
+            //    Vector3 doorNormal = buildingRotation * Doors[i].normal;
+            //    Quaternion facingRotation = Quaternion.LookRotation(doorNormal, Vector3.up);
+
             //    GameObject go = new GameObject();
             //    go.name = "DoorTrigger";
+
+            //    BoxCollider c = go.AddComponent<BoxCollider>();
+            //    c.size = Doors[i].size;
             //    go.transform.parent = transform;
             //    go.transform.position = transform.rotation * Doors[i].buildingMatrix.MultiplyPoint3x4(Doors[i].centre);
             //    go.transform.position += transform.position;
-            //    go.transform.rotation = transform.rotation;
-
-            //    BoxCollider c = go.AddComponent<BoxCollider>();
-            //    c.size = GameObjectHelper.QuaternionFromMatrix(Doors[i].buildingMatrix) * Doors[i].size;
-            //    c.size = new Vector3(Mathf.Abs(c.size.x), Mathf.Abs(c.size.y), Mathf.Abs(c.size.z)); // Abs size components so not negative for collider
+            //    go.transform.rotation = facingRotation;
             //    c.isTrigger = true;
             //}
             //Debug.LogFormat("Added {0} door triggers to scene", Doors.Length);
+
+            // Promote dungeon exit doors to full physical colliders rather than just virtual trigger volumes
+            // This step is based on the following:
+            //  * Daggerfall uses a mixture of discrete exit quads (modelid 70300) and exits baked into surrounding geometry (e.g. modelid 58051)
+            //  * During asset import it's simple to add colliders to a specific model ID, but not so much when exit is just one texture face in larger model
+            //  * In all cases, the exit is a single-sided quad that doesn't play nice with mesh colliders (allows traversal from behind in areas blocked by exit)
+            //  * Work around this by always placing a fully physical BoxCollider in position of virtual trigger volume
+            // NOTES:
+            //  * Unlike virtual door triggers that use a symmetric volume shape, this door trigger is physical and needs to be nicely sized
+            //  * Collider size uses DF units, is scaled based on MeshReader.GlobalScale, then rotated into position
+            Vector3 exitColliderSize = new Vector3(50f, 90f, 2f);
+            for (int i = 0; i < Doors.Length; i++)
+            {
+                if (Doors[i].doorType == DoorTypes.DungeonExit)
+                {
+                    // Get correct facing of exit
+                    Quaternion buildingRotation = GameObjectHelper.QuaternionFromMatrix(Doors[i].buildingMatrix);
+                    Vector3 doorNormal = buildingRotation * Doors[i].normal;
+                    Quaternion facingRotation = Quaternion.LookRotation(doorNormal, Vector3.up);
+
+                    // Create object
+                    GameObject exitObject = new GameObject();
+                    exitObject.name = "DungeonExit";
+
+                    // Add collider
+                    BoxCollider exitCollider = exitObject.AddComponent<BoxCollider>();
+                    exitCollider.center = Vector3.zero;
+                    exitCollider.size = exitColliderSize * MeshReader.GlobalScale;
+                    exitObject.transform.parent = transform;
+                    exitObject.transform.position = transform.rotation * Doors[i].buildingMatrix.MultiplyPoint3x4(Doors[i].centre);
+                    exitObject.transform.position += transform.position;
+                    exitObject.transform.rotation = facingRotation;
+                }
+            }
         }
 
         /// <summary>
@@ -75,19 +112,25 @@ namespace DaggerfallWorkshop
             bool found = false;
             for (int i = 0; i < Doors.Length; i++)
             {
+                Quaternion buildingRotation = GameObjectHelper.QuaternionFromMatrix(Doors[i].buildingMatrix);
+                Vector3 doorNormal = buildingRotation * Doors[i].normal;
+                Quaternion facingRotation = Quaternion.LookRotation(doorNormal, Vector3.up);
+
                 // Setup single trigger position and size over each door in turn
                 // This method plays nice with transforms
-                c.size = GameObjectHelper.QuaternionFromMatrix(Doors[i].buildingMatrix) * Doors[i].size;
+                c.size = Doors[i].size;
+                go.transform.parent = transform;
                 go.transform.position = transform.rotation * Doors[i].buildingMatrix.MultiplyPoint3x4(Doors[i].centre);
                 go.transform.position += transform.position;
-                go.transform.rotation = transform.rotation;
+                go.transform.rotation = facingRotation;
 
                 // Check if hit was inside trigger
                 if (c.bounds.Contains(point))
                 {
                     found = true;
                     doorOut = Doors[i];
-                    break;
+                    if (doorOut.doorType == DoorTypes.DungeonExit)
+                        break;
                 }
             }
 
@@ -147,13 +190,13 @@ namespace DaggerfallWorkshop
         }
 
         /// <summary>
-        /// Find lowest door position in world space.
+        /// Find the lowest, farthest from building origin door position in world space.
         /// </summary>
         /// <param name="record">Door record index.</param>
         /// <param name="doorPosOut">Position of closest door in world space.</param>
         /// <param name="doorIndexOut">Door index in Doors array of closest door.</param>
         /// <returns>Whether or not we found a door</returns>
-        public bool FindLowestDoor(int record, out Vector3 doorPosOut, out int doorIndexOut)
+        public bool FindLowestOutermostDoor(int record, out Vector3 doorPosOut, out int doorIndexOut)
         {
             doorPosOut = Vector3.zero;
             doorIndexOut = -1;
@@ -161,8 +204,9 @@ namespace DaggerfallWorkshop
             if (Doors == null)
                 return false;
 
-            // Find lowest door in interior
+            // Find lowest (and outermost) door in interior
             float lowestY = float.MaxValue;
+            double farthestDist = 0d;
             for (int i = 0; i < Doors.Length; i++)
             {
                 // Get this door centre in world space
@@ -171,12 +215,15 @@ namespace DaggerfallWorkshop
                 // Check if door belongs to same building record or accept any record
                 if (Doors[i].recordIndex == record || record == -1)
                 {
+                    var interiorPos = GameObjectHelper.GetSpawnParentTransform().position;
                     float y = centre.y;
-                    if (y < lowestY)
+                    var dist = Vector2.Distance(new Vector2(interiorPos.x, interiorPos.z), new Vector2(centre.x, centre.z));
+                    if (y <= lowestY && dist > farthestDist)
                     {
                         doorPosOut = centre;
                         doorIndexOut = i;
                         lowestY = y;
+                        farthestDist = dist;
                     }
                 }
             }

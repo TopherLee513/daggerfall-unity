@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -27,7 +27,7 @@ namespace DaggerfallWorkshop.Game.Guilds
         // A base temple class defining non-membership.
         public static Guild templeNotMember = new NonMemberGuild(true);
 
-        // Custom guild registry.
+        // Custom guild registry. Can override vanilla guilds.
         private static Dictionary<FactionFile.GuildGroups, Type> customGuilds = new Dictionary<FactionFile.GuildGroups, Type>();
 
         public static bool RegisterCustomGuild(FactionFile.GuildGroups guildGroup, Type guildType)
@@ -56,12 +56,12 @@ namespace DaggerfallWorkshop.Game.Guilds
             {
                 if (quest.QuestName == ThievesGuild.InitiationQuestName)
                 {
-                    Guild tg = CreateGuildObj(FactionFile.GuildGroups.GeneralPopulace);
+                    IGuild tg = CreateGuildObj(FactionFile.GuildGroups.GeneralPopulace);
                     AddMembership(FactionFile.GuildGroups.GeneralPopulace, tg);
                 }
                 if (quest.QuestName == DarkBrotherhood.InitiationQuestName)
                 {
-                    Guild db = CreateGuildObj(FactionFile.GuildGroups.DarkBrotherHood);
+                    IGuild db = CreateGuildObj(FactionFile.GuildGroups.DarkBrotherHood);
                     AddMembership(FactionFile.GuildGroups.DarkBrotherHood, db);
                 }
             }
@@ -102,86 +102,100 @@ namespace DaggerfallWorkshop.Game.Guilds
 
         #region Guild membership handling
 
-        private readonly Dictionary<FactionFile.GuildGroups, Guild> memberships = new Dictionary<FactionFile.GuildGroups, Guild>();
+        private readonly Dictionary<FactionFile.GuildGroups, IGuild> memberships = new Dictionary<FactionFile.GuildGroups, IGuild>();
 
-        public List<Guild> GetMemberships()
+        private readonly Dictionary<FactionFile.GuildGroups, IGuild> vampMemberships = new Dictionary<FactionFile.GuildGroups, IGuild>();
+
+        private Dictionary<FactionFile.GuildGroups, IGuild> Memberships
         {
-            List<Guild> guilds = new List<Guild>();
-            foreach (Guild guild in memberships.Values)
+            get { return GameManager.Instance.PlayerEffectManager.HasVampirism() ? vampMemberships : memberships; }
+        }
+
+        public List<IGuild> GetMemberships()
+        {
+            List<IGuild> guilds = new List<IGuild>();
+            foreach (IGuild guild in Memberships.Values)
                 guilds.Add(guild);
             return guilds;
         }
 
-        public void AddMembership(FactionFile.GuildGroups guildGroup, Guild guild)
+        public void AddMembership(FactionFile.GuildGroups guildGroup, IGuild guild)
         {
             guild.Join();
-            memberships[guildGroup] = guild;
+            Memberships[guildGroup] = guild;
         }
 
-        public void RemoveMembership(Guild guild)
+        public void RemoveMembership(IGuild guild)
         {
             FactionFile.GuildGroups guildGroup = FactionFile.GuildGroups.None;
-            foreach (FactionFile.GuildGroups group in memberships.Keys)
+            foreach (FactionFile.GuildGroups group in Memberships.Keys)
             {
-                if (memberships[group] == guild)
+                if (Memberships[group] == guild)
                 {
                     guildGroup = group;
                     break;
                 }
             }
             if (guildGroup != FactionFile.GuildGroups.None)
-                memberships.Remove(guildGroup);
+            {
+                guild.Leave();
+                Memberships.Remove(guildGroup);
+            }
         }
 
         public bool HasJoined(FactionFile.GuildGroups guildGroup)
         {
-            return memberships.ContainsKey(guildGroup);
+            return Memberships.ContainsKey(guildGroup);
         }
 
-        public bool GetJoinedGuildOfGuildGroup(FactionFile.GuildGroups guildGroup, out Guild value)
+        public bool GetJoinedGuildOfGuildGroup(FactionFile.GuildGroups guildGroup, out IGuild value)
         {
-            if (memberships.TryGetValue(guildGroup, out value))
+            if (Memberships.TryGetValue(guildGroup, out value))
                 return true;
 
             return false;
         }
 
-        public Guild JoinGuild(FactionFile.GuildGroups guildGroup, int buildingFactionId = 0)
+        public IGuild JoinGuild(FactionFile.GuildGroups guildGroup, int buildingFactionId = 0)
         {
-            if (memberships.ContainsKey(guildGroup))
-                return memberships[guildGroup];
+            if (Memberships.ContainsKey(guildGroup))
+                return Memberships[guildGroup];
 
             return CreateGuildObj(guildGroup, buildingFactionId);
         }
 
-        private Guild CreateGuildObj(FactionFile.GuildGroups guildGroup, int variant = 0)
+        private IGuild CreateGuildObj(FactionFile.GuildGroups guildGroup, int variant = 0)
         {
-            switch (guildGroup)
+            Type guildType;
+            if (customGuilds.TryGetValue(guildGroup, out guildType))
             {
-                case FactionFile.GuildGroups.FightersGuild:
-                    return new FightersGuild();
+                return (IGuild)Activator.CreateInstance(guildType);
+            }
+            else
+            {
+                switch (guildGroup)
+                {
+                    case FactionFile.GuildGroups.FightersGuild:
+                        return new FightersGuild();
 
-                case FactionFile.GuildGroups.MagesGuild:
-                    return new MagesGuild();
+                    case FactionFile.GuildGroups.MagesGuild:
+                        return new MagesGuild();
 
-                case FactionFile.GuildGroups.HolyOrder:
-                    return new Temple(Temple.GetDivine(variant));
+                    case FactionFile.GuildGroups.HolyOrder:
+                        return new Temple(Temple.GetDivine(variant));
 
-                case FactionFile.GuildGroups.KnightlyOrder:
-                    return new KnightlyOrder(KnightlyOrder.GetOrder(variant));
+                    case FactionFile.GuildGroups.KnightlyOrder:
+                        return new KnightlyOrder(KnightlyOrder.GetOrder(variant));
 
-                case FactionFile.GuildGroups.GeneralPopulace:
-                    return new ThievesGuild();
+                    case FactionFile.GuildGroups.GeneralPopulace:
+                        return new ThievesGuild();
 
-                case FactionFile.GuildGroups.DarkBrotherHood:
-                    return new DarkBrotherhood();
+                    case FactionFile.GuildGroups.DarkBrotherHood:
+                        return new DarkBrotherhood();
 
-                default:
-                    Type guildType;
-                    if (customGuilds.TryGetValue(guildGroup, out guildType))
-                        return (Guild)Activator.CreateInstance(guildType);
-                    else
+                    default:
                         return null;
+                }
             }
         }
 
@@ -190,11 +204,11 @@ namespace DaggerfallWorkshop.Game.Guilds
         /// </summary>
         /// <param name="guildGroup"></param>
         /// <param name="buildingFactionId">Specify this to ensure only the temple of matching Divine is returned</param>
-        /// <returns>Guild object</returns>
-        public Guild GetGuild(FactionFile.GuildGroups guildGroup, int buildingFactionId = 0)
+        /// <returns>IGuild object</returns>
+        public IGuild GetGuild(FactionFile.GuildGroups guildGroup, int buildingFactionId = 0)
         {
-            Guild guild;
-            memberships.TryGetValue(guildGroup, out guild);
+            IGuild guild;
+            Memberships.TryGetValue(guildGroup, out guild);
 
             if (guildGroup == FactionFile.GuildGroups.HolyOrder && buildingFactionId > 0)
             {
@@ -224,7 +238,7 @@ namespace DaggerfallWorkshop.Game.Guilds
         /// <summary>
         /// Retrieve the guild object for the given faction id.
         /// </summary>
-        public Guild GetGuild(int factionId)
+        public IGuild GetGuild(int factionId)
         {
             try {
                 FactionFile.GuildGroups guildGroup = GetGuildGroup(factionId);
@@ -239,7 +253,7 @@ namespace DaggerfallWorkshop.Game.Guilds
             }
         }
 
-        private FactionFile.GuildGroups GetGuildGroup(int factionId)
+        public FactionFile.GuildGroups GetGuildGroup(int factionId)
         {
             PersistentFactionData persistentFactionData = GameManager.Instance.PlayerEntity.FactionData;
             FactionFile.GuildGroups guildGroup = FactionFile.GuildGroups.None;
@@ -266,30 +280,43 @@ namespace DaggerfallWorkshop.Game.Guilds
 
         public void ClearMembershipData()
         {
-            memberships.Clear();
+            ClearMembershipData(false);
+            ClearMembershipData(true);
         }
 
-        public Dictionary<int, GuildMembership_v1> GetMembershipData()
+        private void ClearMembershipData(bool vampire = false)
+        {
+            if (vampire)
+                vampMemberships.Clear();
+            else
+                memberships.Clear();
+        }
+
+        public Dictionary<int, GuildMembership_v1> GetMembershipData(bool vampire = false)
         {
             Dictionary<int, GuildMembership_v1> membershipData = new Dictionary<int, GuildMembership_v1>();
-            foreach (FactionFile.GuildGroups guildGroup in memberships.Keys)
-                membershipData[(int)guildGroup] = memberships[guildGroup].GetGuildData();
+            Dictionary<FactionFile.GuildGroups, IGuild> memberDict = vampire ? vampMemberships : memberships;
+            foreach (FactionFile.GuildGroups guildGroup in memberDict.Keys)
+                membershipData[(int)guildGroup] = memberDict[guildGroup].GetGuildData();
             return membershipData;
         }
 
-        public void RestoreMembershipData(Dictionary<int, GuildMembership_v1> data)
+        public void RestoreMembershipData(Dictionary<int, GuildMembership_v1> data, bool vampire = false)
         {
-            ClearMembershipData();
+            ClearMembershipData(vampire);
             if (data != null)
             {
                 foreach (FactionFile.GuildGroups guildGroup in data.Keys)
                 {
                     GuildMembership_v1 guildMembershipData = data[(int)guildGroup];
-                    Guild guild = CreateGuildObj(guildGroup, guildMembershipData.variant);
+                    IGuild guild = CreateGuildObj(guildGroup, guildMembershipData.variant);
                     if (guild != null)
                     {
                         guild.RestoreGuildData(guildMembershipData);
-                        memberships[guildGroup] = guild;
+                        if (vampire)
+                            vampMemberships[guildGroup] = guild;
+                        else
+                            memberships[guildGroup] = guild;
                     }
                 }
             }
@@ -298,14 +325,21 @@ namespace DaggerfallWorkshop.Game.Guilds
         /// <summary>
         /// Imports guild membership records from classic save data.
         /// </summary>
-        public void ImportMembershipData(List<SaveTreeBaseRecord> guildMembershipRecords)
+        public void ImportMembershipData(List<SaveTreeBaseRecord> guildMembershipRecords, bool vampire = false)
         {
-            ClearMembershipData();
+            ClearMembershipData(vampire);
             foreach (GuildMembershipRecord record in guildMembershipRecords)
             {
                 FactionFile.GuildGroups guildGroup = GetGuildGroup(record.ParsedData.factionID);
-                Guild guild = CreateGuildObj(guildGroup, record.ParsedData.factionID);
-                AddMembership(guildGroup, guild);
+                IGuild guild = CreateGuildObj(guildGroup, record.ParsedData.factionID);
+                if (vampire)
+                    vampMemberships[guildGroup] = guild;
+                else
+                    memberships[guildGroup] = guild;
+
+                if (vampire == GameManager.Instance.PlayerEffectManager.HasVampirism())
+                    // Player should only join guilds from either his standard or vampire membership lists, not both
+                    guild.Join();
 
                 // Set rank and time from parsed data.
                 guild.Rank = record.ParsedData.rank;
@@ -319,7 +353,7 @@ namespace DaggerfallWorkshop.Game.Guilds
 
         public bool FreeShipTravel()
         {
-            foreach (Guild guild in memberships.Values)
+            foreach (IGuild guild in Memberships.Values)
                 if (guild.FreeShipTravel())
                     return true;
 
@@ -329,7 +363,7 @@ namespace DaggerfallWorkshop.Game.Guilds
         public int FastTravel(int duration)
         {
             int newDuration = duration;
-            foreach (Guild guild in memberships.Values)
+            foreach (IGuild guild in Memberships.Values)
                 newDuration = guild.FastTravel(newDuration);
             return newDuration;
         }
@@ -337,14 +371,14 @@ namespace DaggerfallWorkshop.Game.Guilds
         public int DeepBreath(int duration)
         {
             int newDuration = duration;
-            foreach (Guild guild in memberships.Values)
+            foreach (IGuild guild in Memberships.Values)
                 newDuration = guild.DeepBreath(newDuration);
             return newDuration;
         }
 
         public bool AvoidDeath()
         {
-            foreach (Guild guild in memberships.Values)
+            foreach (IGuild guild in Memberships.Values)
                 if (guild.AvoidDeath())
                     return true;
             return false;
@@ -399,7 +433,7 @@ namespace DaggerfallWorkshop.Game.Guilds
                             if (args.Length > 1)
                             {
                                 int factionId = int.Parse(args[1]);
-                                Guild guild = guildManager.JoinGuild(guildGroup, factionId);
+                                IGuild guild = guildManager.JoinGuild(guildGroup, factionId);
                                 guildManager.AddMembership(guildGroup, guild);
                                 return "Guild joined.";
                             }
@@ -410,7 +444,7 @@ namespace DaggerfallWorkshop.Game.Guilds
                         }
                         else
                         {
-                            Guild guild = guildManager.JoinGuild(guildGroup);
+                            IGuild guild = guildManager.JoinGuild(guildGroup);
                             guildManager.AddMembership(guildGroup, guild);
                             return "Guild " + guildGroup.ToString() + " joined.";
                         }
@@ -450,7 +484,7 @@ namespace DaggerfallWorkshop.Game.Guilds
                             int newRank = int.Parse(args[1]);
                             if (newRank > 0 && newRank < 10)
                             {
-                                Guild guild = guildManager.GetGuild(guildGroup);
+                                IGuild guild = guildManager.GetGuild(guildGroup);
                                 int rep = guild.GetReputation(playerEntity);
                                 int newRep = Guild.rankReqReputation[newRank];
                                 playerEntity.FactionData.ChangeReputation(guild.GetFactionId(), newRep - rep, true);

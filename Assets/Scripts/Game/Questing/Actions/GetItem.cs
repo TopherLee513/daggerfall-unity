@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -67,7 +67,7 @@ namespace DaggerfallWorkshop.Game.Questing.Actions
             // Release item so we can give back to player
             // Sometimes a quest item is both carried by player then handed back to them
             // Example is Sx012 where courier hands back two items of jewellery
-            GameManager.Instance.PlayerEntity.ReleaseQuestItemForReoffer(item.DaggerfallUnityItem);
+            GameManager.Instance.PlayerEntity.ReleaseQuestItemForReoffer(ParentQuest.UID, item);
 
             // Give quest item to player
             if (item.DaggerfallUnityItem.IsOfTemplate(ItemGroups.Currency, (int)Currency.Gold_pieces))
@@ -75,7 +75,7 @@ namespace DaggerfallWorkshop.Game.Questing.Actions
                 // Give player gold equal to stack size and notify
                 int amount = item.DaggerfallUnityItem.stackCount;
                 GameManager.Instance.PlayerEntity.GoldPieces += amount;
-                DaggerfallUI.AddHUDText(HardStrings.youReceiveGoldPieces.Replace("%s", amount.ToString()));
+                DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("youReceiveGoldPieces").Replace("%s", amount.ToString()));
             }
             else
             {

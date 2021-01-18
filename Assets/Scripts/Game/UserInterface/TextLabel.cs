@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -45,6 +45,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         float textScale = 1.0f; // scale text
         List<GlyphLayoutData> glyphLayout = new List<GlyphLayoutData>();
         bool previousSDFState;
+        Vector2 previousLocalScale;
 
         #endregion
 
@@ -200,15 +201,6 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 Font = font;
         }
 
-        /// <summary>
-        /// get/set the type of coordinate specification (e.g. absolute) of the restricted render area
-        /// </summary>
-        public RestrictedRenderArea_CoordinateType RestrictedRenderAreaCoordinateType
-        {
-            get { return restrictedRenderAreaCoordinateType; }
-            set { restrictedRenderAreaCoordinateType = value; }
-        }
-
         #endregion
 
         #region Overrides
@@ -216,13 +208,6 @@ namespace DaggerfallWorkshop.Game.UserInterface
         public override void Update()
         {
             base.Update();
-
-            // Need to recalculate layout if SDF state changes
-            if (font != null && font.IsSDFCapable != previousSDFState)
-            {
-                RefreshLayout();
-                previousSDFState = font.IsSDFCapable;
-            }
         }
 
         public override void Draw()
@@ -231,6 +216,15 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
             if (font == null || string.IsNullOrEmpty(text))
                 return;
+
+            // Need to recalculate layout if SDF state or scale changes (e.g. window resized)
+            // Do this before drawing so that even unparented label get a chance to recalibrate if needed
+            if (font.IsSDFCapable != previousSDFState || previousLocalScale != LocalScale)
+            {
+                RefreshLayout();
+                previousSDFState = font.IsSDFCapable;
+                previousLocalScale = LocalScale;
+            }
 
             DrawLabel();
         }
@@ -255,10 +249,10 @@ namespace DaggerfallWorkshop.Game.UserInterface
                     GlyphLayoutData glyph = glyphLayout[i];
 
                     Rect targetRect = new Rect(
-                        totalRect.x + glyph.x * LocalScale.x * textScale + HorzPixelScrollOffset * LocalScale.x * textScale,
-                        totalRect.y + glyph.y * LocalScale.y * textScale,
-                        glyph.width * LocalScale.x * textScale,
-                        font.GlyphHeight * LocalScale.y * textScale);
+                        (int)(totalRect.x + glyph.x * LocalScale.x * textScale + HorzPixelScrollOffset * LocalScale.x * textScale),
+                        (int)(totalRect.y + glyph.y * LocalScale.y * textScale),
+                        (int)(glyph.width * LocalScale.x * textScale),
+                        (int)(font.GlyphHeight * LocalScale.y * textScale));
 
                     font.DrawClassicGlyph((byte)glyph.code, targetRect, textColor, shadowPosition * LocalScale, shadowColor);
                 }
@@ -271,8 +265,8 @@ namespace DaggerfallWorkshop.Game.UserInterface
                     GlyphLayoutData glyph = glyphLayout[i];
 
                     Vector2 position = new Vector2(
-                        totalRect.x + glyph.x * LocalScale.x * textScale + HorzPixelScrollOffset * LocalScale.x * textScale,
-                        totalRect.y + glyph.y * LocalScale.y * textScale);
+                        (int)(totalRect.x + glyph.x * LocalScale.x * textScale + HorzPixelScrollOffset * LocalScale.x * textScale),
+                        (int)(totalRect.y + glyph.y * LocalScale.y * textScale));
 
                     font.DrawSDFGlyph(glyph.code, position, LocalScale * textScale, textColor, shadowPosition * LocalScale, shadowColor);
                 }

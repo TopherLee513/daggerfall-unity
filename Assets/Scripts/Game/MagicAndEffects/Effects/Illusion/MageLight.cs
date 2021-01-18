@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -82,9 +82,6 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         {
             // Set properties shared by all variants
             properties.Key = effectKey;
-            properties.GroupName = groupName;
-            properties.SpellMakerDescription = GetSpellMakerDescription();
-            properties.SpellBookDescription = GetSpellBookDescription();
             properties.SupportDuration = true;
             properties.AllowedTargets = EntityEffectBroker.TargetFlags_Self;
             properties.AllowedCraftingStations = MagicCraftingStations.SpellMaker;
@@ -103,6 +100,11 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             SetVariantProperties(VariantTypes.Storm);
             SetVariantProperties(VariantTypes.Arcane);
         }
+
+        public override string GroupName => groupName;
+        public override string SubGroupName => subGroupNames[currentVariant];
+        public override TextFile.Token[] SpellMakerDescription => GetSpellMakerDescription();
+        public override TextFile.Token[] SpellBookDescription => GetSpellBookDescription();
 
         // Start is called when the effect is first initialised - do any setup work here
         // Note: Start is called even if effect is never assigned to entity
@@ -202,7 +204,6 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             vp.effectColor = effectColors[variantIndex];
             vp.effectProperties = properties;
             vp.effectProperties.Key = string.Format("{0}-{1}", effectKey, subGroupKeys[variantIndex]);
-            vp.effectProperties.SubGroupName = subGroupNames[variantIndex];
             variantProperties[variantIndex] = vp;
         }
 

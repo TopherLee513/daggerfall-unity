@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -14,9 +14,14 @@ using System.Text.RegularExpressions;
 using FullSerializer;
 using DaggerfallConnect;
 using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Game.Serialization;
+using DaggerfallWorkshop.Game.Utility;
 
 namespace DaggerfallWorkshop.Game.Questing.Actions
 {
+    /// <summary>
+    /// Trigger for player entering or exiting an exterior type as defined in places table.
+    /// </summary>
     public class WhenPcEntersExits : ActionTemplate
     {
         bool onEnter = true;
@@ -34,8 +39,6 @@ namespace DaggerfallWorkshop.Game.Questing.Actions
             : base(parentQuest)
         {
             IsTriggerCondition = true;
-            PlayerGPS.OnEnterLocationRect += PlayerGPS_OnEnterLocationRect;
-            PlayerGPS.OnExitLocationRect += PlayerGPS_OnExitLocationRect;
         }
 
         public override IQuestAction CreateNew(string source, Quest parentQuest)
@@ -72,6 +75,9 @@ namespace DaggerfallWorkshop.Game.Questing.Actions
                     action.currentLocationType = playerGPS.CurrentLocation.MapTableData.LocationType;
             }
 
+            // Register events when creating action
+            action.RegisterEvents();
+
             return action;
         }
 
@@ -82,6 +88,14 @@ namespace DaggerfallWorkshop.Game.Questing.Actions
                 return true;
 
             return false;
+        }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+
+            // Unregister events when quest ends
+            UnregisterEvents();
         }
 
         #region Private Methods
@@ -120,6 +134,24 @@ namespace DaggerfallWorkshop.Game.Questing.Actions
             return false;
         }
 
+        private void RegisterEvents()
+        {
+            PlayerGPS.OnEnterLocationRect += PlayerGPS_OnEnterLocationRect;
+            PlayerGPS.OnExitLocationRect += PlayerGPS_OnExitLocationRect;
+
+            SaveLoadManager.OnStartLoad += SaveLoadManager_OnStartLoad;
+            StartGameBehaviour.OnNewGame += StartGameBehaviour_OnNewGame;
+        }
+
+        private void UnregisterEvents()
+        {
+            PlayerGPS.OnEnterLocationRect -= PlayerGPS_OnEnterLocationRect;
+            PlayerGPS.OnExitLocationRect -= PlayerGPS_OnExitLocationRect;
+
+            SaveLoadManager.OnStartLoad -= SaveLoadManager_OnStartLoad;
+            StartGameBehaviour.OnNewGame -= StartGameBehaviour_OnNewGame;
+        }
+
         #endregion
 
         #region Events Handlers
@@ -137,6 +169,16 @@ namespace DaggerfallWorkshop.Game.Questing.Actions
         {
             previousLocationType = currentLocationType;
             currentLocationType = DFRegion.LocationTypes.None;
+        }
+
+        private void StartGameBehaviour_OnNewGame()
+        {
+            UnregisterEvents();
+        }
+
+        private void SaveLoadManager_OnStartLoad(Serialization.SaveData_v1 saveData)
+        {
+            UnregisterEvents();
         }
 
         #endregion
@@ -176,6 +218,9 @@ namespace DaggerfallWorkshop.Game.Questing.Actions
             indexExteriorType = data.indexExteriorType;
             currentLocationType = data.currentLocationType;
             previousLocationType = data.previousLocationType;
+
+            // Register events when restoring action
+            RegisterEvents();
         }
 
         #endregion

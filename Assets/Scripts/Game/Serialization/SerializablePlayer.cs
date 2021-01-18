@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -125,6 +125,7 @@ namespace DaggerfallWorkshop.Game.Serialization
             data.playerEntity.skillsRecentlyRaised = entity.SkillsRecentlyRaised;
             data.playerEntity.timeOfLastSkillTraining = entity.TimeOfLastSkillTraining;
             data.playerEntity.startingLevelUpSkillSum = entity.StartingLevelUpSkillSum;
+            data.playerEntity.currentLevelUpSkillSum = entity.CurrentLevelUpSkillSum;
             data.playerEntity.equipTable = entity.ItemEquipTable.SerializeEquipTable();
             data.playerEntity.items = entity.Items.SerializeItems();
             data.playerEntity.wagonItems = entity.WagonItems.SerializeItems();
@@ -160,6 +161,8 @@ namespace DaggerfallWorkshop.Game.Serialization
             data.playerEntity.reputationSGroup9 = entity.SGroupReputations[(int)FactionFile.SocialGroups.SGroup9];
             data.playerEntity.reputationSGroup10 = entity.SGroupReputations[(int)FactionFile.SocialGroups.SGroup10];
             data.playerEntity.previousVampireClan = entity.PreviousVampireClan;
+            data.playerEntity.daedraSummonDay = entity.DaedraSummonDay;
+            data.playerEntity.daedraSummonIndex = entity.DaedraSummonIndex;
 
             data.playerEntity.regionData = entity.RegionData;
             data.playerEntity.rentedRooms = entity.RentedRooms.ToArray();
@@ -183,6 +186,7 @@ namespace DaggerfallWorkshop.Game.Serialization
             }
             // Store guild memberships
             data.guildMemberships = GameManager.Instance.GuildManager.GetMembershipData();
+            data.vampireMemberships = GameManager.Instance.GuildManager.GetMembershipData(true);
             // Store one time quest acceptances
             data.oneTimeQuestsAccepted = GameManager.Instance.QuestListsManager.oneTimeQuestsAccepted;
 
@@ -208,8 +212,11 @@ namespace DaggerfallWorkshop.Game.Serialization
             playerPosition.insideDungeon = playerEnterExit.IsPlayerInsideDungeon;
             playerPosition.insideBuilding = playerEnterExit.IsPlayerInsideBuilding;
             playerPosition.insideOpenShop = playerEnterExit.IsPlayerInsideOpenShop;
+            playerPosition.insideTavern = playerEnterExit.IsPlayerInsideTavern;
+            playerPosition.insideResidence = playerEnterExit.IsPlayerInsideResidence;
             playerPosition.terrainSamplerName = DaggerfallUnity.Instance.TerrainSampler.ToString();
             playerPosition.terrainSamplerVersion = DaggerfallUnity.Instance.TerrainSampler.Version;
+            playerPosition.smallerDungeonsState = (DaggerfallUnity.Settings.SmallerDungeons) ? QuestSmallerDungeonsState.Enabled : QuestSmallerDungeonsState.Disabled;
             playerPosition.weather = GameManager.Instance.WeatherManager.PlayerWeather.WeatherType;
             return playerPosition;
         }
@@ -281,6 +288,8 @@ namespace DaggerfallWorkshop.Game.Serialization
             entity.TimeOfLastSkillIncreaseCheck = data.playerEntity.timeOfLastSkillIncreaseCheck;
             entity.TimeOfLastSkillTraining = data.playerEntity.timeOfLastSkillTraining;
             entity.StartingLevelUpSkillSum = data.playerEntity.startingLevelUpSkillSum;
+            if ((entity.CurrentLevelUpSkillSum = data.playerEntity.currentLevelUpSkillSum) == 0)
+                entity.SetCurrentLevelUpSkillSum();
             entity.Items.DeserializeItems(data.playerEntity.items);
             entity.WagonItems.DeserializeItems(data.playerEntity.wagonItems);
             entity.OtherItems.DeserializeItems(data.playerEntity.otherItems);
@@ -302,7 +311,6 @@ namespace DaggerfallWorkshop.Game.Serialization
             entity.LastTimePlayerAteOrDrankAtTavern = data.playerEntity.lastTimePlayerAteOrDrankAtTavern;
             entity.CrimeCommitted = data.playerEntity.crimeCommitted;
             entity.HaveShownSurrenderToGuardsDialogue = data.playerEntity.haveShownSurrenderToGuardsDialogue;
-            entity.SetCurrentLevelUpSkillSum();
             if (DaggerfallUnity.Settings.PlayerTorchFromItems)
                 entity.LightSource = entity.Items.GetItem(data.playerEntity.lightSourceUID);
             entity.SGroupReputations[(int)FactionFile.SocialGroups.Commoners] = data.playerEntity.reputationCommoners;
@@ -316,6 +324,8 @@ namespace DaggerfallWorkshop.Game.Serialization
             entity.SGroupReputations[(int)FactionFile.SocialGroups.SGroup9] = data.playerEntity.reputationSGroup9;
             entity.SGroupReputations[(int)FactionFile.SocialGroups.SGroup10] = data.playerEntity.reputationSGroup10;
             entity.PreviousVampireClan = data.playerEntity.previousVampireClan;
+            entity.DaedraSummonDay = data.playerEntity.daedraSummonDay;
+            entity.DaedraSummonIndex = data.playerEntity.daedraSummonIndex;
 
             entity.RentedRooms = (data.playerEntity.rentedRooms != null) ? data.playerEntity.rentedRooms.ToList() : new List<RoomRental_v1>();
 
@@ -345,7 +355,7 @@ namespace DaggerfallWorkshop.Game.Serialization
             Items.DaggerfallUnityItem[] equipTable = entity.ItemEquipTable.EquipTable;
             for (int i = 0; i < equipTable.Length; i++)
             {
-                if (equipTable[i] != null && (equipTable[i].ItemGroup == Items.ItemGroups.Armor))
+                if (equipTable[i] != null)
                 {
                     entity.UpdateEquippedArmorValues(equipTable[i], true);
                 }
@@ -379,6 +389,8 @@ namespace DaggerfallWorkshop.Game.Serialization
             {
                 playerEnterExit.BuildingDiscoveryData = data.playerPosition.buildingDiscoveryData;
                 playerEnterExit.IsPlayerInsideOpenShop = data.playerPosition.insideOpenShop;
+                playerEnterExit.IsPlayerInsideTavern = data.playerPosition.insideTavern;
+                playerEnterExit.IsPlayerInsideResidence = data.playerPosition.insideResidence;
             }
 
             // Lower player position flag if inside with no doors
@@ -406,6 +418,7 @@ namespace DaggerfallWorkshop.Game.Serialization
 
             // Restore guild memberships, also done early in SaveLoadManager for interiors
             GameManager.Instance.GuildManager.RestoreMembershipData(data.guildMemberships);
+            GameManager.Instance.GuildManager.RestoreMembershipData(data.vampireMemberships, true);
             // Restore one time quest acceptances
             GameManager.Instance.QuestListsManager.oneTimeQuestsAccepted = data.oneTimeQuestsAccepted;
 

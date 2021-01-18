@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -153,12 +153,12 @@ namespace DaggerfallWorkshop
 
                 if (Dice100.FailedRoll(chance))
                 {
-                    Game.DaggerfallUI.Instance.PopupMessage(HardStrings.lockpickingFailure);
+                    Game.DaggerfallUI.Instance.PopupMessage(TextManager.Instance.GetLocalizedText("lockpickingFailure"));
                     FailedSkillLevel = player.Skills.GetLiveSkillValue(DFCareer.Skills.Lockpicking);
                 }
                 else
                 {
-                    Game.DaggerfallUI.Instance.PopupMessage(HardStrings.lockpickingSuccess);
+                    Game.DaggerfallUI.Instance.PopupMessage(TextManager.Instance.GetLocalizedText("lockpickingSuccess"));
                     CurrentLockValue = 0;
 
                     if (PlaySounds && PickedLockSound > 0 && audioSource)
@@ -172,37 +172,39 @@ namespace DaggerfallWorkshop
             }
             else
             {
-                Game.DaggerfallUI.Instance.PopupMessage(HardStrings.lockpickingFailure);
+                Game.DaggerfallUI.Instance.PopupMessage(TextManager.Instance.GetLocalizedText("lockpickingFailure"));
             }
         }
 
         public void AttemptBash(bool byPlayer)
         {
-            if (!IsOpen)
+            // Play bash sound if flagged and ready
+            if (PlaySounds && BashSound > 0 && audioSource)
             {
-                // Play bash sound if flagged and ready
-                if (PlaySounds && BashSound > 0 && audioSource)
-                {
-                    DaggerfallAudioSource dfAudioSource = GetComponent<DaggerfallAudioSource>();
-                    if (dfAudioSource != null)
-                        dfAudioSource.PlayOneShot(BashSound);
-                }
-
-                // Cannot bash magically held doors
-                if (!IsMagicallyHeld)
-                {
-                    // Roll for chance to open
-                    int chance = 20 - CurrentLockValue;
-                    if (Dice100.SuccessRoll(chance))
-                    {
-                        CurrentLockValue = 0;
-                        ToggleDoor(true);
-                    }
-                }
-
-                if (byPlayer && Game.GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeonCastle)
-                    Game.GameManager.Instance.MakeEnemiesHostile();
+                DaggerfallAudioSource dfAudioSource = GetComponent<DaggerfallAudioSource>();
+                if (dfAudioSource != null)
+                    dfAudioSource.PlayOneShot(BashSound);
             }
+
+            if (IsOpen)
+            {
+                // Bash-close the door
+                ToggleDoor(true);
+            }
+            // Cannot bash magically held doors
+            else if (!IsMagicallyHeld)
+            {
+                // Roll for chance to open
+                int chance = 20 - CurrentLockValue;
+                if (Dice100.SuccessRoll(chance))
+                {
+                    CurrentLockValue = 0;
+                    ToggleDoor(true);
+                }
+            }
+
+            if (byPlayer && Game.GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeonCastle)
+                Game.GameManager.Instance.MakeEnemiesHostile();
         }
 
         public void SetInteriorDoorSounds()

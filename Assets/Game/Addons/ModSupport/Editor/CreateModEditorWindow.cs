@@ -1,13 +1,15 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Lypyl (lypyl@dfworkshop.net)
-// Contributors:    
+// Contributors:    TheLacus
 // 
 // Notes:
 //
+
+// #define LOG_BUILD_TIME
 
 using UnityEngine;
 using UnityEditor;
@@ -44,20 +46,24 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         int assetSelection = -1;
         ModInfo modInfo;
 
+        bool precompiledMod;
+
         //asset bundles will be created for any targets here
-        BuildTarget[] buildTargets = new BuildTarget[]
+        readonly BuildTarget[] buildTargets = new BuildTarget[]
         {
             BuildTarget.StandaloneWindows,
             BuildTarget.StandaloneOSX,
-            BuildTarget.StandaloneLinux,
+            BuildTarget.StandaloneLinux64,
         };
-
-        bool[] buildTargetsToggles = new bool[] {true, true, true};
+        readonly bool[] buildTargetsToggles = new bool[] { true, true, true };
         ModCompressionOptions compressionOption = ModCompressionOptions.LZ4;
         bool ModInfoReady { get { return ModInfoReadyTowrite(); } }
         List<string> Assets { get { return modInfo.Files; } set { modInfo.Files = value; } }         //list of assets to be added
-        GUIStyle titleStyle = new GUIStyle();
-        GUIStyle fieldStyle = new GUIStyle();
+        readonly GUIStyle titleStyle = new GUIStyle();
+        readonly GUIStyle fieldStyle = new GUIStyle();
+        GUIContent documentationGUIContent;
+        GUIContent targetInfoGUIContent;
+        bool isSupportedEditorVersion;
 
         void OnEnable()
         {
@@ -72,6 +78,11 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
             titleStyle.fontSize = 15;
             fieldStyle.fontSize = 12;
             minSize = new Vector2(1280, 600);
+
+            documentationGUIContent = new GUIContent(EditorGUIUtility.IconContent("_Help"));
+            documentationGUIContent.text = " Mod System Documentation";
+            targetInfoGUIContent = new GUIContent($"{VersionInfo.DaggerfallUnityProductName} {VersionInfo.DaggerfallUnityStatus} {VersionInfo.DaggerfallUnityVersion} (Unity {VersionInfo.BaselineUnityVersion})");
+            isSupportedEditorVersion = IsSupportedEditorVersion();
         }
 
         void OnDisable()
@@ -114,7 +125,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 if (string.IsNullOrEmpty(info.GUID) || info.GUID == "invalid")
                     info.GUID = System.Guid.NewGuid().ToString();
             }
-            catch(System.Exception ex)
+            catch (Exception ex)
             {
                 Debug.LogError(ex.Message);
                 return new ModInfo();
@@ -127,6 +138,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
 
         void OnGUI()
         {
+            bool openDependenciesWindow = false;
             EditorGUI.indentLevel++;
 
             GUILayoutHelper.Horizontal(() =>
@@ -146,7 +158,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 {
                     try
                     {
-                        currentFilePath = EditorUtility.OpenFilePanelWithFilters("", GetTempModDirPath(), new string[] { "JSON", "dfmod.json"});
+                        currentFilePath = EditorUtility.OpenFilePanelWithFilters("", ModManager.EditorModsDirectory, new string[] { "JSON", "dfmod.json"});
 
                         if (!File.Exists(currentFilePath))
                         {
@@ -170,19 +182,37 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
 
                     fileOpen = true;
                 }
+
+                if (GUILayout.Button(documentationGUIContent))
+                    Help.BrowseURL("https://www.dfworkshop.net/projects/daggerfall-unity/modding/");
             });
 
-            if(modInfo == null)
+            if (!isSupportedEditorVersion)
+                EditorGUILayout.HelpBox("Unsupported version of Unity Editor: generated mods may not be compatible with release builds!", MessageType.Warning);
+
+            if (modInfo == null)
             {
                 fileOpen = false;
                 modInfo = new ModInfo();
             }
+
             if (!fileOpen) // if no fileopen, hide rest of UI
+            {
+                EditorGUILayout.HelpBox("Open a manifest file or create a new one to edit or build a mod.", MessageType.Info);
                 return;
+            }
 
             GUILayoutHelper.Vertical(() =>
             {
                 EditorGUILayout.Space();
+
+                GUILayoutHelper.Horizontal(() =>
+                {
+                    EditorGUILayout.LabelField(new GUIContent("Current Target: "), titleStyle);
+                    GUILayout.Space(-1000);
+                    EditorGUILayout.LabelField(targetInfoGUIContent, fieldStyle);
+                });
+
                 GUILayoutHelper.Horizontal(() =>
                 {
                     EditorGUILayout.LabelField(new GUIContent("Current File: "), titleStyle);
@@ -257,6 +287,15 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                         GUILayout.Space(300);
                     });
 
+                    EditorGUILayout.Space();
+
+                    GUILayoutHelper.Horizontal(() =>
+                    {
+                        EditorGUILayout.LabelField(new GUIContent("Mod Dependencies: "), titleStyle);
+                        if (GUILayout.Button("Open Dependencies Editor"))
+                            openDependenciesWindow = true;
+                        GUILayout.Space(300);
+                    });
                 });
 
                 EditorGUILayout.Space();
@@ -304,6 +343,8 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
 
             EditorGUILayout.TextArea("", GUI.skin.horizontalSlider);
 
+            EditorGUILayout.Space();
+
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.BeginVertical();
 
@@ -341,6 +382,8 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
 
             EditorGUILayout.TextArea("", GUI.skin.horizontalSlider);
 
+            EditorGUILayout.Space();
+
             GUILayoutHelper.Horizontal(() =>
             {
                 EditorGUILayout.LabelField("Build Path:", titleStyle);
@@ -357,6 +400,9 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
             EditorGUILayout.Space();
             EditorGUILayout.TextArea("", GUI.skin.horizontalSlider);
 
+            EditorGUILayout.Space();
+            precompiledMod = EditorGUILayout.ToggleLeft(new GUIContent("Precompiled (experimental)", "Compile C# files into a .dll."), precompiledMod);
+
             GUILayoutHelper.Horizontal(() =>
             {
 
@@ -372,6 +418,13 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 }
 
             });
+
+            if (openDependenciesWindow)
+            {
+                var modDependenciesWindow = CreateInstance<ModDependenciesEditorWindow>();
+                modDependenciesWindow.SetModinfo(modInfo);
+                modDependenciesWindow.ShowUtility();
+            }
         }
 
 
@@ -386,7 +439,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
             string directory = "";
 
             if (!supressWindow)
-                path = EditorUtility.SaveFilePanel("Save", GetTempModDirPath(), modInfo.ModTitle, "dfmod.json");
+                path = EditorUtility.SaveFilePanel("Save", ModManager.EditorModsDirectory, modInfo.ModTitle, "dfmod.json");
 
             Debug.Log("save path: " + path);
 
@@ -424,19 +477,26 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 return;
             }
 
-            var selection = Selection.GetFiltered(typeof(object), SelectionMode.Deep);
-            if (selection == null)
+            var selection = Selection.GetFiltered<UnityEngine.Object>(SelectionMode.Deep);
+            if (selection.Length == 0)
             {
-                Debug.Log("selection null");
+                EditorUtility.DisplayDialog("Mod Builder", "No assets selected.", "OK");
                 return;
             }
 
             for (int i = 0; i < selection.Length; i++)
             {
                 string path = FixSeperatorCharacters(AssetDatabase.GetAssetPath(selection[i].GetInstanceID()));
-                Debug.Log("Adding asset at: " + path);
-
-                if (File.Exists(path))
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    const string errorMessage = "Selected asset is not saved to disk. Make sure you selected an asset from the Project window and not the Hierarchy window.";
+                    EditorUtility.DisplayDialog("Mod Builder", errorMessage, "OK");
+                }
+                else if (!File.Exists(path))
+                {
+                    EditorUtility.DisplayDialog("Mod Builder", $"Path {path} doesn't exist.", "OK");
+                }
+                else
                 {
                     UnityEngine.Object[] objs = AssetDatabase.LoadAllAssetsAtPath(path);
                     for (int j = 0; j < objs.Length; j++)
@@ -448,11 +508,6 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                         }
                     }
                 }
-                else
-                    Debug.LogWarning("Asset not found for: " + path);
-
-                if (!Assets.Contains(path))
-                    AddAssetToMod(path);
             }
         }
 
@@ -471,6 +526,8 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         //Builds the actual asset bundle.  Only builds if files added & required information set in mod info fields
         bool BuildMod()
         {
+            const string modBuilderLabel = "Mod Builder";
+
             if (!ModInfoReady)
             {
                 Debug.LogWarning("Not ready to build, canceled.");
@@ -498,112 +555,150 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            AssetBundleBuild[] buildMap = new AssetBundleBuild[1];
-            buildMap[0].assetBundleName = modFilePath.Substring(modFilePath.LastIndexOfAny(new char[] { '\\', '/' }) + 1);
-            buildMap[0].assetBundleVariant = "";       //TODO
+            string fileName = modFilePath.Substring(modFilePath.LastIndexOfAny(new char[] { '\\', '/' }) + 1);
             AddAssetToMod(GetAssetPathFromFilePath(currentFilePath));
-            List<string> tempAssetPaths = new List<string>(Assets);
+            List<string> assets = Assets;
 
-            for (int i = 0; i < tempAssetPaths.Count; i++ )
+            if (precompiledMod)
             {
-                string filePath =  Assets[i];
+                string dataPath = Application.dataPath;
+                var scriptPaths = new List<string>();
+                var otherAssets = new List<string>();
 
-                if(!File.Exists(filePath))
+                foreach (string assetPath in assets)
                 {
-                    Debug.LogError("Asset not found: " + filePath);
-                    return false;
-                }
-                else
-                {
-                    Debug.Log("Adding Asset: " + filePath);
-                }
-                //replace c# file with text asset
-                if (filePath.ToLower().EndsWith(".cs"))
-                {
-                    filePath = CopyAsset<TextAsset>(filePath, ".txt");
-                    tempAssetPaths[i] = GetAssetPathFromFilePath(filePath);
-                }
-                else if (filePath.ToLower().EndsWith(".prefab"))
-                {
-                    string assetPath = CopyAsset<GameObject>(filePath); //create a copy of prefab in temp. directory
-                    if(assetPath == null)
-                    {
-                        Debug.LogError("Failed to duplicate prefab: " + assetPath);
-                        continue;
-                    }
+                    if (assetPath.EndsWith(".cs", StringComparison.Ordinal))
+                        scriptPaths.Add(Path.Combine(dataPath, assetPath.Substring("Assets/".Length)));
                     else
-                    {
-                        tempAssetPaths[i] = assetPath;                  //replace path to original prefab w/ path to copy
-                    }
+                        otherAssets.Add(assetPath);
+                }
 
-                    string importedComponentsPath = CheckForImportedComponents(assetPath);
-                    if (importedComponentsPath != null)
+                assets = otherAssets;
+
+                if (scriptPaths.Count > 0)
+                {
+                    string assemblyPath = Path.Combine(GetTempModDirPath(), fileName.Replace("dfmod", "dll.bytes"));
+
+                    if (!ModAssemblyBuilder.Compile(assemblyPath, scriptPaths.ToArray()))
+                        return false;
+
+                    string outputAssetPath = assemblyPath.Substring(assemblyPath.LastIndexOf("Assets"));
+                    AssetDatabase.ImportAsset(outputAssetPath);
+                    assets.Add(outputAssetPath);
+                }
+            }
+
+            AssetBundleBuild[] buildMap = new AssetBundleBuild[1];
+            buildMap[0].assetBundleName = fileName;
+            buildMap[0].assetBundleVariant = "";       //TODO
+
+            var tempAssetPaths = new List<string>(assets);
+
+#if LOG_BUILD_TIME
+            var stopWatch = new System.Diagnostics.Stopwatch();
+            stopWatch.Start();
+#endif
+
+            AssetDatabase.StartAssetEditing();
+
+            try
+            {
+                for (int i = 0; i < tempAssetPaths.Count; i++)
+                {
+                    string filePath = tempAssetPaths[i];
+
+                    EditorUtility.DisplayProgressBar(modBuilderLabel, filePath, (float)i / tempAssetPaths.Count);
+
+                    if (!File.Exists(filePath))
                     {
-                        if (!tempAssetPaths.Contains(importedComponentsPath))
-                            tempAssetPaths.Add(importedComponentsPath);
+                        Debug.LogError("Asset not found: " + filePath);
+                        return false;
+                    }
+                    
+                    if (filePath.EndsWith(".cs", StringComparison.Ordinal))
+                    {
+                        // Create a copy of C# script as a .txt text asset
+                        string assetPath = CopyAsset<TextAsset>(filePath, ".txt");
+                        if (assetPath == null)
+                            return false;
+
+                        tempAssetPaths[i] = assetPath;
+                    }
+                    else if (filePath.EndsWith(".prefab", StringComparison.Ordinal))
+                    {
+                        // Serialize custom components
+                        // Will create a prefab copy without custom components if needed
+                        var prefabCopy = CheckForImportedComponents(filePath);
+                        if (prefabCopy.HasValue)
+                        {
+                            tempAssetPaths[i] = prefabCopy.Value.prefabPath;
+                            tempAssetPaths.Add(prefabCopy.Value.dataPath);
+                        }
                     }
                 }
             }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+                AssetDatabase.StopAssetEditing();
+            }
+
+#if LOG_BUILD_TIME
+            stopWatch.Stop();
+            Debug.Log($"Mod Builder: elapsed {stopWatch.ElapsedMilliseconds} milliseconds to prepare assets.");
+#endif
 
             buildMap[0].assetNames = tempAssetPaths.ToArray();
 
             //build for every target in buildTarget array
             for (int i = 0; i < buildTargets.Length; i++)
             {
+                if (EditorUtility.DisplayCancelableProgressBar(modBuilderLabel, $"Building for {buildTargets[i]}.", (float)i / buildTargets.Length))
+                    return false;
+
                 if (buildTargetsToggles[i] == false) { continue;  }
 
                 string fullPath = Path.Combine(modOutPutPath, buildTargets[i].ToString());
-                if (!Directory.Exists(fullPath))
-                {
-                    Directory.CreateDirectory(fullPath);
-                }
+                Directory.CreateDirectory(fullPath);
                 BuildPipeline.BuildAssetBundles(fullPath, buildMap, ToBuildAssetBundleOptions(compressionOption), buildTargets[i]);
             }
+
+            EditorUtility.ClearProgressBar();
             return true;
         }
 
         string CopyAsset<T>(string path, string suffix = "") where T : UnityEngine.Object
         {
-            T oldAsset = AssetDatabase.LoadAssetAtPath<T>(path);
+            string fileName = Path.GetFileName(path) + suffix;
+            string newFilePath = Path.Combine(GetTempModDirPath(modInfo.ModTitle), fileName);
+            string newAssetPath = GetAssetPathFromFilePath(newFilePath);
 
-            if(oldAsset == null)
-            {
-                Debug.LogError("Failed to load asset: " + path);
-            }
-
-            string name = path.Substring(path.LastIndexOfAny(new char[] { '\\', '/' }) + 1) + suffix;
-            string newPath = Path.Combine(GetTempModDirPath(modInfo.ModTitle), name);
-            newPath = GetAssetPathFromFilePath(newPath);
-
-            if (!AssetDatabase.CopyAsset(path, newPath))
+            if (!AssetDatabase.CopyAsset(path, newAssetPath))
             {
                 Debug.LogError("Failed to Copy asset: " + path);
                 return null;
             }
 
-            return newPath;
-        } 
+            return newAssetPath;
+        }
 
 
         static string GetAssetPathFromFilePath(string fullPath)
         {
             if (string.IsNullOrEmpty(fullPath))
             {
-                Debug.Log("Invalid string, can't get AssetPath");
+                Debug.Log("Invalid string, can't get AssetPath.");
                 return null;
             }
 
-            int index = fullPath.LastIndexOf("Assets");
+            int index = fullPath.LastIndexOf("Assets", StringComparison.Ordinal);
 
             if (index == -1)
             {
-                Debug.Log(string.Format("Invalid string: {0}, can't get AssetPath", fullPath));
+                Debug.LogError($"Invalid string: {fullPath}, can't get AssetPath.");
                 return null;
             }
-            else
-            {
-                Debug.Log(string.Format("index: {0} full path: {1} Asset Path: {2} ", index, fullPath, fullPath.Substring(index)));
-            }
+
             return FixSeperatorCharacters(fullPath.Substring(index));
         }
 
@@ -633,32 +728,58 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
 
         }
 
-        private string CheckForImportedComponents(string prefabPath)
+        /// <summary>
+        /// Checks if a prefab has custom components that need to be deserialized by mod manager.
+        /// Custom components are removed and edited prefab is saved to a temp location.
+        /// </summary>
+        /// <param name="prefabPath">Asset path of original prefab.</param>
+        /// <returns>Paths of prefab copy and json data; null if not copied./returns>
+        private (string prefabPath, string dataPath)? CheckForImportedComponents(string prefabPath)
         {
-            var go = AssetDatabase.LoadAssetAtPath(prefabPath, typeof(GameObject)) as GameObject;
-            string importedComponentsPath = ImportedComponentAttribute.Save(go, GetTempModDirPath(modInfo.ModTitle));
-            if (importedComponentsPath != null)
-            {
-                importedComponentsPath = GetAssetPathFromFilePath(importedComponentsPath);
-                AddAssetToMod(importedComponentsPath);
-                AssetDatabase.Refresh();
-                return importedComponentsPath;
-            }
+            var go = PrefabUtility.LoadPrefabContents(prefabPath);
 
-            return null;
+            try
+            {
+                string tempModPath = GetTempModDirPath(modInfo.ModTitle);
+                string importedComponentsPath = ImportedComponentAttribute.Save(go, tempModPath);
+                if (importedComponentsPath != null)
+                {
+                    string tempPrefabPath = GetAssetPathFromFilePath($"{tempModPath}/{go.name}.prefab");
+                    PrefabUtility.SaveAsPrefabAsset(go, tempPrefabPath);                    
+                    string tempDataPath = GetAssetPathFromFilePath(importedComponentsPath);
+                    return (tempPrefabPath, tempDataPath);
+                }
+
+                return null;
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(go);
+            }
         }
 
-        private static UnityEditor.BuildAssetBundleOptions ToBuildAssetBundleOptions(ModCompressionOptions value)
+        private static BuildAssetBundleOptions ToBuildAssetBundleOptions(ModCompressionOptions value)
         {
             switch(value)
             {
                 case ModCompressionOptions.LZ4:
-                    return UnityEditor.BuildAssetBundleOptions.ChunkBasedCompression;
+                    return BuildAssetBundleOptions.ChunkBasedCompression;
                 case ModCompressionOptions.Uncompressed:
-                    return UnityEditor.BuildAssetBundleOptions.UncompressedAssetBundle;
+                    return BuildAssetBundleOptions.UncompressedAssetBundle;
                 default:
-                    return UnityEditor.BuildAssetBundleOptions.None;
+                    return BuildAssetBundleOptions.None;
             }
+        }
+
+        private static bool IsSupportedEditorVersion()
+        {
+#if UNITY_EDITOR_WIN || UNITY_EDITOR_OSX
+            return Application.unityVersion.Equals(VersionInfo.BaselineUnityVersion, StringComparison.Ordinal);
+#elif UNITY_EDITOR_LINUX
+            return true;
+#else
+            return false;
+#endif
         }
     }
 }

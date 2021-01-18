@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,6 +11,7 @@
 
 using UnityEngine;
 using DaggerfallConnect;
+using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
@@ -48,15 +49,16 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         {
             properties.Key = EffectKey;
             properties.ClassicKey = MakeClassicKey(43, 255);
-            properties.GroupName = TextManager.Instance.GetText("ClassicEffects", "teleport");
-            properties.SpellMakerDescription = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1602);
-            properties.SpellBookDescription = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1302);
             properties.AllowedTargets = EntityEffectBroker.TargetFlags_Self;
             properties.AllowedElements = EntityEffectBroker.ElementFlags_MagicOnly;
             properties.AllowedCraftingStations = MagicCraftingStations.SpellMaker;
             properties.ShowSpellIcon = false;
             properties.MagicSkill = DFCareer.MagicSkills.Mysticism;
         }
+
+        public override string GroupName => TextManager.Instance.GetLocalizedText("teleport");
+        public override TextFile.Token[] SpellMakerDescription => DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1602);
+        public override TextFile.Token[] SpellBookDescription => DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1302);
 
         protected override int RemoveRound()
         {
@@ -97,6 +99,12 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             (incumbent as Teleport).PromptPlayer();
         }
 
+        public override void End()
+        {
+            anchorPosition = null;
+            base.End();
+        }
+
         #endregion
 
         #region Private Methods
@@ -114,6 +122,8 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
             // Prompt for outcome
             DaggerfallMessageBox mb = new DaggerfallMessageBox(DaggerfallUI.Instance.UserInterfaceManager, DaggerfallMessageBox.CommonMessageBoxButtons.AnchorTeleport, teleportOrSetAnchor, DaggerfallUI.Instance.UserInterfaceManager.TopWindow);
+            // QoL, does not match classic. No magicka refund, though
+            mb.AllowCancel = true;
             mb.OnButtonClick += EffectActionPrompt_OnButtonClick;
             mb.Show();
         }
@@ -146,7 +156,6 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             {
                 // Just need to move player
                 serializablePlayer.RestorePosition(anchorPosition);
-                return;
             }
             else
             {
@@ -155,6 +164,8 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                     SaveLoadManager.CacheScene(GameManager.Instance.StreamingWorld.SceneName);      // Player is outside
                 else if (playerEnterExit.IsPlayerInsideBuilding)
                     SaveLoadManager.CacheScene(playerEnterExit.Interior.name);                      // Player inside a building
+                else // Player inside a dungeon
+                    playerEnterExit.TransitionDungeonExteriorImmediate();
 
                 // Need to load some other part of the world again - player could be anywhere
                 PlayerEnterExit.OnRespawnerComplete += PlayerEnterExit_OnRespawnerComplete;
@@ -266,7 +277,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             }
             else if (messageBoxButton == DaggerfallMessageBox.MessageBoxButtons.Teleport)
             {
-                if (!anchorSet)
+                if (!anchorSet || anchorPosition == null)
                 {
                     DaggerfallMessageBox mb = new DaggerfallMessageBox(DaggerfallUI.Instance.UserInterfaceManager, DaggerfallUI.Instance.UserInterfaceManager.TopWindow);
                     mb.SetTextTokens(achorMustBeSet);

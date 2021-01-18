@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -61,7 +61,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             NativePanel.BackgroundTexture = nativeTexture;
 
             // Add "Please select your home province..." prompt
-            promptLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(0, 16), HardStrings.pleaseSelectYourHomeProvince, NativePanel);
+            promptLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(0, 16), TextManager.Instance.GetLocalizedText("pleaseSelectYourHomeProvince"), NativePanel);
             promptLabel.HorizontalAlignment = HorizontalAlignment.Center;
             promptLabel.TextColor = DaggerfallUI.DaggerfallDefaultTextColor;
             promptLabel.ShadowColor = DaggerfallUI.DaggerfallDefaultShadowColor;
@@ -78,7 +78,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             if (Input.GetKeyDown(exitKey))
             {
                 selectedRace = null;
-                CloseWindow();
+                CancelWindow();
             }
         }
 

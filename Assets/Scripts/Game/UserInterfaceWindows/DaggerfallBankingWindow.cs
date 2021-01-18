@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -305,7 +305,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
             this.amount = amount;
 
             if (result == TransactionResult.TOO_HEAVY)
-                messageBox.SetText(HardStrings.cannotCarryGold);
+                messageBox.SetText(TextManager.Instance.GetLocalizedText("cannotCarryGold"));
             else
                 messageBox.SetTextTokens((int)result, this);
 
@@ -367,31 +367,37 @@ namespace DaggerfallWorkshop.Game.UserInterface
         //bank window button handlers
         void DepoGoldButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             ToggleTransactionInput(TransactionType.Depositing_gold);
         }
 
         void DrawGoldButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             ToggleTransactionInput(TransactionType.Withdrawing_gold);
         }
 
         void DepoLOCButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             GeneratePopup(TransactionResult.DEPOSIT_LOC);
         }
 
         void DrawLOCButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             ToggleTransactionInput(TransactionType.Withdrawing_Letter);
         }
 
         void LoanRepayButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             ToggleTransactionInput(TransactionType.Repaying_loan);
         }
 
         void LoanBorrowButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             if (DaggerfallBankManager.HasDefaulted(regionIndex))
             {
                 GeneratePopup(TransactionResult.ALREADY_DEFAULTED);
@@ -410,6 +416,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
         void BuyHouseButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             if (DaggerfallBankManager.OwnsHouse)
                 GeneratePopup(TransactionResult.ALREADY_OWN_HOUSE);
             else
@@ -420,7 +427,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
                     List<BuildingSummary> housesForSale = buildingDirectory.GetHousesForSale();
                     // If houses are for sale, show them
                     if (housesForSale.Count > 0)
-                        uiManager.PushWindow(new DaggerfallBankPurchasePopUp(uiManager, this, housesForSale));
+                        uiManager.PushWindow(UIWindowFactory.GetInstanceWithArgs(UIWindowType.BankPurchasePopup, new object[] { uiManager, this, housesForSale }));
                     else
                         GeneratePopup(TransactionResult.NO_HOUSES_FOR_SALE);
                 }
@@ -431,6 +438,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
         void SellHouseButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             if (DaggerfallBankManager.OwnsHouse)
             {
                 BuildingDirectory buildingDirectory = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory();
@@ -445,23 +453,27 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
         void BuyShipButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             if (DaggerfallBankManager.OwnsShip)
                 GeneratePopup(TransactionResult.ALREADY_OWN_SHIP);
             else if (GameManager.Instance.PlayerGPS.CurrentLocation.Exterior.ExteriorData.PortTownAndUnknown == 0)
                 GeneratePopup(TransactionResult.NOT_PORT_TOWN);
             else    // Show ships for sale
-                uiManager.PushWindow(new DaggerfallBankPurchasePopUp(uiManager, this));
+                uiManager.PushWindow(UIWindowFactory.GetInstanceWithArgs(UIWindowType.BankPurchasePopup, new object[] { uiManager, this, null }));
         }
 
         void SellShipButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             if (DaggerfallBankManager.OwnsShip)
                 GeneratePopup(TransactionResult.SELL_SHIP_OFFER, DaggerfallBankManager.GetShipSellPrice(DaggerfallBankManager.OwnedShip));
         }
 
         void ExitButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
-            CloseWindow();
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+            if (!transactionInput.Enabled)
+                CloseWindow();
         }
 
         public void OnTransactionEventHandler(TransactionType type, TransactionResult result, int amount)
@@ -506,17 +518,15 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
         public static DaggerfallMessageBox CreateBankingStatusBox(IUserInterfaceWindow previous = null)
         {
-            const string textDatabase = "DaggerfallUI";
-
             DaggerfallMessageBox bankingBox = new DaggerfallMessageBox(DaggerfallUI.Instance.UserInterfaceManager, previous);
             bankingBox.SetHighlightColor(DaggerfallUI.DaggerfallUnityStatDrainedTextColor);
             List<TextFile.Token> messages = new List<TextFile.Token>();
             bool found = false;
             messages.AddRange(GetLoansLine(
-                TextManager.Instance.GetText(textDatabase, "region"),
-                TextManager.Instance.GetText(textDatabase, "account"),
-                TextManager.Instance.GetText(textDatabase, "loan"),
-                TextManager.Instance.GetText(textDatabase, "dueDate")));
+                TextManager.Instance.GetLocalizedText("region"),
+                TextManager.Instance.GetLocalizedText("account"),
+                TextManager.Instance.GetLocalizedText("loan"),
+                TextManager.Instance.GetLocalizedText("dueDate")));
             messages.Add(TextFile.NewLineToken);
             for (int regionIndex = 0; regionIndex < DaggerfallBankManager.BankAccounts.Length; regionIndex++)
             {
@@ -529,7 +539,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
             }
             if (!found)
             {
-                TextFile.Token noneToken = TextFile.CreateTextToken(TextManager.Instance.GetText(textDatabase, "noAccount"));
+                TextFile.Token noneToken = TextFile.CreateTextToken(TextManager.Instance.GetLocalizedText("noAccount"));
                 messages.Add(noneToken);
                 messages.Add(TextFile.NewLineToken);
             }

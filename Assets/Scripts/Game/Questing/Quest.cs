@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,10 +11,11 @@
 
 using UnityEngine;
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using DaggerfallWorkshop.Utility;
 using DaggerfallConnect.Arena2;
+using DaggerfallWorkshop.Game.Items;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
 using FullSerializer;
 
@@ -48,6 +49,7 @@ namespace DaggerfallWorkshop.Game.Questing
         bool questComplete = false;
         bool questSuccess = false;
         Dictionary<int, LogEntry> activeLogMessages = new Dictionary<int, LogEntry>();
+        int currentLogMessageId = -1;
 
         string questName;
         string displayName;
@@ -58,11 +60,13 @@ namespace DaggerfallWorkshop.Game.Questing
         bool questTombstoned = false;
         DaggerfallDateTime questTombstoneTime;
 
+        QuestSmallerDungeonsState smallerDungeonsState = QuestSmallerDungeonsState.NotSet;
+        string compiledByVersion = VersionInfo.DaggerfallUnityVersion;
+
         Place lastPlaceReferenced = null;
         QuestResource lastResourceReferenced = null;
         bool questBreak = false;
         Stack<DaggerfallMessageBox> pendingMessageBoxStack = new Stack<DaggerfallMessageBox>();
-        List<QuestResource> pendingClickRearms = new List<QuestResource>();
 
         int ticksToEnd = 0;
 
@@ -80,6 +84,7 @@ namespace DaggerfallWorkshop.Game.Questing
         {
             public int stepID;
             public int messageID;
+            public DaggerfallDateTime dateTime;
         }
 
         /// <summary>
@@ -232,6 +237,23 @@ namespace DaggerfallWorkshop.Game.Questing
             get { return questTombstoneTime; }
         }
 
+        /// <summary>
+        /// Current log message ID, used only for expanding %qdt macro properly.
+        /// </summary>
+        public int CurrentLogMessageId
+        {
+            set { currentLogMessageId = value; }
+        }
+
+        /// <summary>
+        /// State of smaller dungeons setting at time quest started.
+        /// Persists through quest lifetime to inform smaller dungeon usage for dungeon sitelinks related to this quest.
+        /// </summary>
+        public QuestSmallerDungeonsState SmallerDungeonsState
+        {
+            get { return smallerDungeonsState; }
+        }
+
         #endregion
 
         #region Constructors
@@ -242,12 +264,21 @@ namespace DaggerfallWorkshop.Game.Questing
         public Quest()
         {
             uid = DaggerfallUnity.NextUID;
-            questStartTime = new DaggerfallDateTime(DaggerfallUnity.Instance.WorldTime.Now);
         }
 
         #endregion
 
         #region Public Methods
+        
+        
+        /// <summary>
+        /// Start the quest.
+        /// </summary>
+        public void Start()
+        {
+            questStartTime = new DaggerfallDateTime(DaggerfallUnity.Instance.WorldTime.Now);
+            smallerDungeonsState = (DaggerfallUnity.Settings.SmallerDungeons) ? QuestSmallerDungeonsState.Enabled : QuestSmallerDungeonsState.Disabled;
+        }
 
         /// <summary>
         /// Update quest.
@@ -292,12 +323,6 @@ namespace DaggerfallWorkshop.Game.Questing
                 // Update task
                 task.Update();
                 ShowPendingTaskMessages();
-
-                // Perform pending click rearms
-                // Allows tasks to "own" a player click on a first-come, first-serve basis
-                // Prevents concurrency issues when multiple tasks are listening for click on same resource and may all run at same time
-                // Reference quest P0B00L01 where clicks on _vampire_ will both progress and end quest
-                ClearPendingClickRearms();
             }
 
             // Show any remaining pending task messages
@@ -308,39 +333,6 @@ namespace DaggerfallWorkshop.Game.Questing
             foreach (QuestResource resource in resources.Values)
             {
                 resource.PostTick(this);
-            }
-        }
-
-        /// <summary>
-        /// Schedule a quest resource to rearm player click immediately after task execution.
-        /// </summary>
-        /// <param name="resource"></param>
-        public void ScheduleClickRearm(QuestResource resource)
-        {
-            pendingClickRearms.Add(resource);
-        }
-
-        void ClearPendingClickRearms()
-        {
-            foreach(QuestResource resource in pendingClickRearms)
-            {
-                resource.RearmPlayerClick();
-            }
-            pendingClickRearms.Clear();
-        }
-
-        /// <summary>
-        /// initializes quest rumors
-        /// dictionary must contain the quest's messages (call after messages was initialized correctly)
-        /// </summary>
-        public void initQuestRumors()
-        {
-            // Add RumorsDuringQuest rumor to rumor mill
-            Message message;
-            message = GetMessage((int)QuestMachine.QuestMessages.RumorsDuringQuest);
-            if (message != null)
-            {
-                GameManager.Instance.TalkManager.AddOrReplaceQuestProgressRumor(this.UID, message);
             }
         }
 
@@ -411,9 +403,15 @@ namespace DaggerfallWorkshop.Game.Questing
         public void Dispose()
         {
             // Dispose of quest resources
-            foreach(QuestResource resource in resources.Values)
+            foreach (QuestResource resource in resources.Values)
             {
                 resource.Dispose();
+            }
+
+            // Dispose actions for all quest tasks
+            foreach (Task task in tasks.Values)
+            {
+                task.DisposeActions();
             }
         }
 
@@ -442,7 +440,10 @@ namespace DaggerfallWorkshop.Game.Questing
                 return;
             }
 
-            // Create new questor
+            // Set person as questor
+            person.IsQuestor = true;
+
+            // Create new questor symbol
             string key = personSymbol.Name;
             QuestorData qd = new QuestorData();
             qd.symbol = personSymbol.Clone();
@@ -530,6 +531,7 @@ namespace DaggerfallWorkshop.Game.Questing
             LogEntry entry = new LogEntry();
             entry.stepID = stepID;
             entry.messageID = messageID;
+            entry.dateTime = new DaggerfallDateTime(DaggerfallUnity.Instance.WorldTime.Now);
             activeLogMessages.Add(stepID, entry);
         }
 
@@ -568,6 +570,21 @@ namespace DaggerfallWorkshop.Game.Questing
             }
 
             return logs;
+        }
+
+        /// <summary>
+        /// Get the current log entry date time when opening the active quests log.
+        /// </summary>
+        /// <returns>Return the current log entry time if any, otherwise the quest start time.</returns>
+        public DaggerfallDateTime GetCurrentLogMessageTime()
+        {
+            foreach (LogEntry log in activeLogMessages.Values)
+            {
+                if (log.messageID == currentLogMessageId && log.dateTime != null)
+                    return log.dateTime;
+            }
+
+            return questStartTime;
         }
 
         /// <summary>
@@ -676,6 +693,11 @@ namespace DaggerfallWorkshop.Game.Questing
                 return null;
         }
 
+        public QuestResource[] GetAllResources()
+        {
+            return resources.Values.ToArray();
+        }
+        
         public QuestResource[] GetAllResources(Type resourceType)
         {
             List<QuestResource> foundResources = new List<QuestResource>();
@@ -755,7 +777,7 @@ namespace DaggerfallWorkshop.Game.Questing
             for (int i = 0; i < chunks.Count; i++)
             {
                 DaggerfallMessageBox messageBox = new DaggerfallMessageBox(DaggerfallUI.UIManager);
-                messageBox.SetTextTokens(chunks[i]);
+                messageBox.SetTextTokens(chunks[i], ExternalMCP);
                 messageBox.ClickAnywhereToClose = true;
                 messageBox.AllowCancel = true;
                 messageBox.ParentPanel.BackgroundColor = Color.clear;
@@ -838,6 +860,8 @@ namespace DaggerfallWorkshop.Game.Questing
             public DaggerfallDateTime questStartTime;
             public bool questTombstoned;
             public DaggerfallDateTime questTombstoneTime;
+            public QuestSmallerDungeonsState smallerDungeonsState;
+            public string compiledByVersion;
             public LogEntry[] activeLogMessages;
             public Message.MessageSaveData_v1[] messages;
             public QuestResource.ResourceSaveData_v1[] resources;
@@ -858,6 +882,8 @@ namespace DaggerfallWorkshop.Game.Questing
             data.questStartTime = questStartTime;
             data.questTombstoned = questTombstoned;
             data.questTombstoneTime = questTombstoneTime;
+            data.smallerDungeonsState = smallerDungeonsState;
+            data.compiledByVersion = compiledByVersion;
 
             // Save active log messages
             List<LogEntry> activeLogMessagesSaveDataList = new List<LogEntry>();
@@ -910,6 +936,8 @@ namespace DaggerfallWorkshop.Game.Questing
             questStartTime = data.questStartTime;
             questTombstoned = data.questTombstoned;
             questTombstoneTime = data.questTombstoneTime;
+            smallerDungeonsState = data.smallerDungeonsState;
+            compiledByVersion = data.compiledByVersion;
 
             // Restore active log messages
             activeLogMessages.Clear();
@@ -954,6 +982,19 @@ namespace DaggerfallWorkshop.Game.Questing
                 Task task = new Task(this);
                 task.RestoreSaveData(taskData);
                 tasks.Add(task.Symbol.Name, task);
+            }
+        }
+
+        public void ReassignLegacyQuestMarkers()
+        {
+            // May need to remap old marker system at end of load for each Place resource
+            QuestResource[] foundPlaces = GetAllResources(typeof(Place));
+            if (foundPlaces != null && foundPlaces.Length > 0)
+            {
+                foreach (QuestResource place in foundPlaces)
+                {
+                    (place as Place).ReassignSiteDetailsLegacyMarkers();
+                }
             }
         }
 

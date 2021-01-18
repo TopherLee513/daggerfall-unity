@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -37,8 +37,7 @@ namespace DaggerfallWorkshop.Game
 
         public float MovementSpeed = 25.0f;                     // Speed missile moves through world
         public float ColliderRadius = 0.45f;                    // Radius of missile contact sphere
-        public float ExplosionRadius = 3.0f;                    // Radius of area of effect explosion
-        public float TouchRange = 2.5f;                         // Maximum range for touch spherecast
+        public float ExplosionRadius = 4.0f;                    // Radius of area of effect explosion
         public bool EnableLight = true;                         // Show a light with this missile - player can force disable from settings
         public bool EnableShadows = true;                       // Light will cast shadows - player can force disable from settings
         public Color[] PulseColors;                             // Array of colours for pulse cycle, light will lerp from item-to-item and loop back to start - ignored if empty
@@ -60,6 +59,9 @@ namespace DaggerfallWorkshop.Game
         const int magicMissileArchive = 379;
         const int poisonMissileArchive = 377;
         const int shockMissileArchive = 378;
+
+        public const float SphereCastRadius = 0.25f;
+        public const float TouchRange = 3.0f;
 
         Vector3 direction;
         Light myLight;
@@ -198,7 +200,7 @@ namespace DaggerfallWorkshop.Game
             }
 
             // Setup senses
-            if (caster != GameManager.Instance.PlayerEntityBehaviour)
+            if (caster && caster != GameManager.Instance.PlayerEntityBehaviour)
             {
                 enemySenses = caster.GetComponent<EnemySenses>();
             }
@@ -234,6 +236,7 @@ namespace DaggerfallWorkshop.Game
 
                 goModel.transform.localPosition = adjust;
                 goModel.transform.rotation = Quaternion.LookRotation(GetAimDirection());
+                goModel.layer = gameObject.layer;
             }
 
             // Ignore missile collision with caster (this is a different check to AOE targets)
@@ -243,10 +246,6 @@ namespace DaggerfallWorkshop.Game
 
         private void Update()
         {
-            // Exit if no caster
-            if (!caster)
-                return;
-
             // Execute based on target type
             if (!missileReleased)
             {
@@ -259,8 +258,9 @@ namespace DaggerfallWorkshop.Game
                     case TargetTypes.AreaAtRange:
                         DoMissile();
                         break;
-                    case TargetTypes.AreaAroundCaster:
-                        DoAreaOfEffect(caster.transform.position, true);
+                    case TargetTypes.AreaAroundCaster:  // Must have a caster to perform area around caster
+                        if (caster)
+                            DoAreaOfEffect(caster.transform.position, true);
                         break;
                     default:
                         return;
@@ -377,25 +377,40 @@ namespace DaggerfallWorkshop.Game
 
         #endregion
 
+        #region Static Methods
+
+        public static DaggerfallEntityBehaviour GetEntityTargetInTouchRange(Vector3 aimPosition, Vector3 aimDirection)
+        {
+            // Fire ray along caster facing
+            // Origin point of ray is set back slightly to fix issue where strikes against target capsules touching caster capsule do not connect
+            RaycastHit hit;
+            aimPosition -= aimDirection * 0.1f;
+            Ray ray = new Ray(aimPosition, aimDirection);
+            if (Physics.SphereCast(ray, SphereCastRadius, out hit, TouchRange))
+                return hit.transform.GetComponent<DaggerfallEntityBehaviour>();
+            else
+                return null;
+        }
+
+        #endregion
+
         #region Private Methods
 
         // Touch can hit a single target at close range
-        // NOTE: In classic touch will not fire unless valid target in range
-        // TODO: Change to spherecast for easier hits - fix problem here and in WeaponManager when player capsule touching target capsule
         void DoTouch()
         {
             transform.position = caster.transform.position;
 
-            RaycastHit hit;
-            Ray ray = new Ray(GetAimPosition(), GetAimDirection());
-            if (Physics.Raycast(ray, out hit, TouchRange))
+            // Touch does not use default missile collider
+            // This prevent touch missile check colliding with self and blocking spell transfer
+            if (myCollider)
+                myCollider.enabled = false;
+
+            DaggerfallEntityBehaviour entityBehaviour = GetEntityTargetInTouchRange(GetAimPosition(), GetAimDirection());
+            if (entityBehaviour && entityBehaviour != caster)
             {
-                DaggerfallEntityBehaviour entityBehaviour = hit.transform.GetComponent<DaggerfallEntityBehaviour>();
-                if (entityBehaviour && entityBehaviour != caster)
-                {
-                    targetEntities.Add(entityBehaviour);
-                    //Debug.LogFormat("Missile hit target {0} by touch", entityBehaviour.name);
-                }
+                targetEntities.Add(entityBehaviour);
+                //Debug.LogFormat("Missile hit target {0} by touch", entityBehaviour.name);
             }
 
             // Touch always shows impact flash then expires
@@ -502,6 +517,7 @@ namespace DaggerfallWorkshop.Game
             // Add new billboard parented to this missile
             GameObject go = GameObjectHelper.CreateDaggerfallBillboardGameObject(GetMissileTextureArchive(), record, transform);
             go.transform.localPosition = Vector3.zero;
+            go.layer = gameObject.layer;
             myBillboard = go.GetComponent<DaggerfallBillboard>();
             myBillboard.FramesPerSecond = BillboardFramesPerSecond;
             myBillboard.FaceY = true;
@@ -554,7 +570,7 @@ namespace DaggerfallWorkshop.Game
                     continue;
 
                 // Instantiate payload bundle on target
-                effectManager.AssignBundle(payload);
+                effectManager.AssignBundle(payload, AssignBundleFlags.ShowNonPlayerFailures);
             }
         }
 
@@ -578,8 +594,8 @@ namespace DaggerfallWorkshop.Game
             }
             else
             {
-                RaycastHit unused = new RaycastHit();
-                GameManager.Instance.WeaponManager.WeaponDamage(unused, goModel.transform.forward, arrowHitCollider, true);
+                Transform hitTransform = arrowHitCollider.gameObject.transform;
+                GameManager.Instance.WeaponManager.WeaponDamage(GameManager.Instance.WeaponManager.LastBowUsed, true, hitTransform, hitTransform.position, goModel.transform.forward);
             }
         }
 

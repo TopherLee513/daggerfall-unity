@@ -31,7 +31,6 @@ namespace DaggerfallWorkshop.Game
         bool sliding;
 
         Vector3 lastMovePosition = Vector3.zero;
-        int stuckFrameCount = 0;
 
         public Vector3 ContactPoint
         {
@@ -91,7 +90,6 @@ namespace DaggerfallWorkshop.Game
                 if (!GameManager.Instance.PlayerEntity.IsParalyzed)
                 {
                     HeadDipHandling();
-                    UnstickHandling();
                 }
             }
         }
@@ -113,62 +111,6 @@ namespace DaggerfallWorkshop.Game
                 Physics.Raycast(contactPoint + Vector3.up, -Vector3.up, out hit);
                 if (Vector3.Angle(hit.normal, Vector3.up) > slideLimit)
                     sliding = true;
-            }
-        }
-
-        void UnstickHandling()
-        {
-            // Stuck check - is player trying to move forwards/backwards but cannot?
-            // This could be because something is in the way, like a wall, or it could be for one of the following reasons:
-            //  -A: Sticky geometry such as single-sided polygons poking through floor in cave blocks which sticks the Unity character controller
-            //  -B: Restrictive geometry like doors positioned at bottom of stairs and ramps without enough room for capsule to pass
-            // If player is stuck and there is nothing in front of them, then teleport player forwards in small steps until clear
-            // Notes:
-            //  -A better/smoother solution is preferred for case B, as this geometry is so enclosed that unstick is still difficult to aim for clear space
-            //  -Player will experience a brief moment of uneven movement while being teleported past sticky geometry - fortunately sticky spots are fairly rare
-            //  -Tolerances should prevent false positives, but it's still possible - might require tuning/reworking later
-            //  -Works best when player is standing as spherecast test has more clearance
-            //  -Enemies will still become stuck as their motor does not have this handling
-            const float stuckMovementThreshold = 0.25f;
-            const float stuckSampleDistance = 0.5f;
-            const int stuckFrameThreshold = 3;
-            bool tryingToMoveForwards = InputManager.Instance.HasAction(InputManager.Actions.MoveForwards);
-            bool tryingToMoveBackwards = InputManager.Instance.HasAction(InputManager.Actions.MoveBackwards);
-            if (tryingToMoveForwards || tryingToMoveBackwards)
-            {
-                // Use a sqrmagnitude movement threshold check to see if player is stuck
-                // This is fast and overcomes precision issues with a simple position check
-                // Player must be stuck for multiple frames before unstuck handler will attempt to resolve
-                float testMagnitude = Mathf.Abs(lastMovePosition.sqrMagnitude - myTransform.position.sqrMagnitude);
-                //Debug.LogFormat("Testing stuck with {0} test magnitude", testMagnitude);
-                if (testMagnitude < stuckMovementThreshold)
-                {
-                    stuckFrameCount++;
-                    if (stuckFrameCount > stuckFrameThreshold)
-                    {
-                        //Debug.LogFormat("Stuck for {0} frames", stuckFrameCount);
-
-                        // Attempt resolution by first checking if nothing in the way using a spherecast
-                        // Then teleport player forwards until stuck test is cleared by normal movement
-                        // The spherecast check is smaller than player capsule to avoid most sticky spots
-                        // But large enough not to pass through small cracks or openings the player should not traverse
-                        Vector3 sampleDirection = (tryingToMoveForwards) ? myTransform.forward : -myTransform.forward;
-                        Ray sampleRay = new Ray(myTransform.position, sampleDirection);
-                        if (!Physics.SphereCast(sampleRay, controller.radius - 0.01f, stuckSampleDistance))
-                        {
-                            //Debug.LogFormat("Trying to resolve stuck for {0} frames", stuckFrameCount);
-
-                            // Do not unstick farther than stuckSampleDistance or player may teleport through a nearby wall
-                            myTransform.position += sampleDirection * stuckSampleDistance;
-                        }
-                    }
-                }
-                else
-                {
-                    // Reset during normal movement
-                    lastMovePosition = myTransform.position;
-                    stuckFrameCount = 0;
-                }
             }
         }
 

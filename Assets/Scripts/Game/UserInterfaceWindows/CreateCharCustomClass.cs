@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,16 +11,10 @@
 
 using UnityEngine;
 using System;
-using System.IO;
-using System.Collections;
 using System.Collections.Generic;
 using DaggerfallConnect;
-using DaggerfallConnect.Arena2;
-using DaggerfallWorkshop;
 using DaggerfallWorkshop.Game.UserInterface;
-using DaggerfallWorkshop.Game.Player;
-using DaggerfallWorkshop.Game.Entity;
-using DaggerfallWorkshop.Game.Formulas;
+using System.Collections;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 {
@@ -37,6 +31,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         const int defaultHpPerLevel = 8;
         const int minDifficultyPoints = -12;
         const int maxDifficultyPoints = 40;
+
+        const float daggerTrailLingerTime = 1.0f;
 
         const int strNameYourClass = 301;
         const int strSetSkills = 300;
@@ -175,14 +171,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // Setup help dictionary
             helpDict = new Dictionary<string, int> 
             {
-                { HardStrings.helpAttributes, 2402 },
-                { HardStrings.helpClassName, 2401 },
-                { HardStrings.helpGeneral, 2400 },
-                { HardStrings.helpReputations, 2406 },
-                { HardStrings.helpSkillAdvancement, 2407 },
-                { HardStrings.helpSkills, 2403 },
-                { HardStrings.helpSpecialAdvantages, 2404 },
-                { HardStrings.helpSpecialDisadvantages, 2405 }
+                { TextManager.Instance.GetLocalizedText("helpAttributes"), 2402 },
+                { TextManager.Instance.GetLocalizedText("helpClassName"), 2401 },
+                { TextManager.Instance.GetLocalizedText("helpGeneral"), 2400 },
+                { TextManager.Instance.GetLocalizedText("helpReputations"), 2406 },
+                { TextManager.Instance.GetLocalizedText("helpSkillAdvancement"), 2407 },
+                { TextManager.Instance.GetLocalizedText("helpSkills"), 2403 },
+                { TextManager.Instance.GetLocalizedText("helpSpecialAdvantages"), 2404 },
+                { TextManager.Instance.GetLocalizedText("helpSpecialDisadvantages"), 2405 }
             };
 
             // Setup skills dictionary
@@ -475,7 +471,28 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             {
                 daggerY = Math.Min(maxDaggerY, (int)(defaultDaggerY + (41 * (-difficultyPoints / 12f))));
             }
+
+            DaggerfallUI.Instance.StartCoroutine(AnimateDagger());
             daggerPanel.Position = new Vector2(defaultDaggerX, daggerY);
+        }
+
+        IEnumerator AnimateDagger()
+        {
+            Panel daggerTrailPanel = new Panel();
+            daggerTrailPanel.Position = daggerPanel.Position;
+            daggerTrailPanel.Size = daggerPanel.Size;
+            daggerTrailPanel.BackgroundColorTexture = nativeDaggerTexture;
+            daggerTrailPanel.BackgroundColor = new Color32(255, 255, 255, 255);
+            NativePanel.Components.Add(daggerTrailPanel);
+            float daggerTrailTime = daggerTrailLingerTime;
+
+            while ((daggerTrailTime -= Time.unscaledDeltaTime) >= 0f)
+            {
+                daggerTrailPanel.BackgroundColor = new Color32(255, 255, 255, (byte)(255 * daggerTrailTime / daggerTrailLingerTime));
+                yield return new WaitForEndOfFrame();
+            }
+            NativePanel.Components.Remove(daggerTrailPanel);
+            daggerTrailPanel.Dispose();
         }
 
         #endregion

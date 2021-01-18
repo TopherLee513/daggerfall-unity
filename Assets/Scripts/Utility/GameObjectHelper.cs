@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -67,6 +67,8 @@ namespace DaggerfallWorkshop.Utility
                     // Assign animation properties
                     c.TargetMaterial = cm.material;
                     c.AnimationFrames = materials;
+                    if (cm.framesPerSecond > 0)
+                        c.FramesPerSecond = cm.framesPerSecond;
                 }
             }
         }
@@ -88,6 +90,11 @@ namespace DaggerfallWorkshop.Utility
             return string.Format("DaggerfallMesh [ID={0}]", modelID);
         }
 
+        public static string GetGoFlatName(int textureArchive, int textureRecord)
+        {
+            return string.Format("DaggerfallBillboard [TEXTURE.{0:000}, Index={1}]", textureArchive, textureRecord);
+        }
+
         /// <summary>
         /// Adds a single DaggerfallMesh game object to scene.
         /// </summary>
@@ -96,13 +103,15 @@ namespace DaggerfallWorkshop.Utility
         /// <param name="makeStatic">Flag to set object static flag.</param>
         /// <param name="useExistingObject">Add mesh to existing object rather than create new.</param>
         /// <param name="ignoreCollider">Force disable collider.</param>
+        /// <param name="convexCollider">Make collider convex.</param>
         /// <returns>GameObject.</returns>
         public static GameObject CreateDaggerfallMeshGameObject(
             uint modelID,
             Transform parent,
             bool makeStatic = false,
             GameObject useExistingObject = null,
-            bool ignoreCollider = false)
+            bool ignoreCollider = false,
+            bool convexCollider = false)
         {
             DaggerfallUnity dfUnity = DaggerfallUnity.Instance;
 
@@ -152,6 +161,10 @@ namespace DaggerfallWorkshop.Utility
                 MeshCollider collider = go.GetComponent<MeshCollider>();
                 if (collider == null) collider = go.AddComponent<MeshCollider>();
                 collider.sharedMesh = mesh;
+
+                // Enable convex collider if specified
+                if (convexCollider)
+                    collider.convex = true;
             }
 
             // Assign static
@@ -260,11 +273,23 @@ namespace DaggerfallWorkshop.Utility
 
         public static GameObject CreateDaggerfallBillboardGameObject(int archive, int record, Transform parent)
         {
-            GameObject go = new GameObject(string.Format("DaggerfallBillboard [TEXTURE.{0:000}, Index={1}]", archive, record));
+            string flatName = GetGoFlatName(archive, record);
+            GameObject go = new GameObject(flatName);
             if (parent) go.transform.parent = parent;
 
             DaggerfallBillboard dfBillboard = go.AddComponent<DaggerfallBillboard>();
             dfBillboard.SetMaterial(archive, record);
+
+            if (PlayerActivate.HasCustomActivation(flatName)) 
+            {
+                // Add box collider to flats with actions for raycasting - only flats that can be activated directly need this, so this can possibly be restricted in future
+                // Skip this for flats that already have a collider assigned from elsewhere (e.g. NPC flats)
+                if (!go.GetComponent<Collider>())
+                {
+                    Collider col = go.AddComponent<BoxCollider>();
+                    col.isTrigger = true;
+                }
+            }
 
             return go;
         }
@@ -551,9 +576,6 @@ namespace DaggerfallWorkshop.Utility
             if (dfBlock != null)
                 dfBlock.SetMarkers(startMarkers, enterMarkers);
 
-            // Add treasure
-            RDBLayout.AddTreasure(go, editorObjects, ref blockData, dungeonType);
-
             // Add enemies
             if (importEnemies)
             {
@@ -625,7 +647,7 @@ namespace DaggerfallWorkshop.Utility
                 loot.TextureRecord = textureRecord;
                 if (enemyEntity != null)
                 {
-                    loot.entityName = enemyEntity.MobileEnemy.Name;
+                    loot.entityName = TextManager.Instance.GetLocalizedEnemyName(enemyEntity.MobileEnemy.ID);
                     loot.isEnemyClass = (enemyEntity.EntityType == EntityTypes.EnemyClass);
                 }
             }
@@ -852,56 +874,45 @@ namespace DaggerfallWorkshop.Utility
                 // Helps ensure a resource is not injected twice
                 QuestResourceBehaviour[] resourceBehaviours = Resources.FindObjectsOfTypeAll<QuestResourceBehaviour>();
 
-                // Get selected spawn QuestMarker for this Place
-                QuestMarker spawnMarker = place.SiteDetails.questSpawnMarkers[place.SiteDetails.selectedQuestSpawnMarker];
-                if (spawnMarker.targetResources != null)
+                // Add any resources for the selected marker for this place
+                AddMarkerResourceObjects(siteType, parent, enableNPCs, enableFoes, quest, resourceBehaviours, place.SiteDetails.selectedMarker);
+
+                // Add any resources from other non-selected markers
+                if (place.SiteDetails.questSpawnMarkers != null)
+                    foreach (QuestMarker marker in place.SiteDetails.questSpawnMarkers)
+                        AddMarkerResourceObjects(siteType, parent, enableNPCs, enableFoes, quest, resourceBehaviours, marker);
+            }
+        }
+
+        private static void AddMarkerResourceObjects(SiteTypes siteType, Transform parent, bool enableNPCs, bool enableFoes, Quest quest, QuestResourceBehaviour[] resourceBehaviours, QuestMarker marker)
+        {
+            if (marker.targetResources != null)
+            {
+                foreach (Symbol target in marker.targetResources)
                 {
-                    foreach (Symbol target in spawnMarker.targetResources)
+                    // Get target resource
+                    QuestResource resource = quest.GetResource(target);
+                    if (resource == null)
+                        continue;
+
+                    // Skip resources already injected into scene
+                    if (IsAlreadyInjected(resourceBehaviours, resource))
+                        continue;
+
+                    // Inject to scene based on resource type
+                    if (resource is Person && enableNPCs)
                     {
-                        // Get target resource
-                        QuestResource resource = quest.GetResource(target);
-                        if (resource == null)
-                            continue;
-
-                        // Skip resources already injected into scene
-                        if (IsAlreadyInjected(resourceBehaviours, resource))
-                            continue;
-
-                        // Inject to scene based on resource type
-                        if (resource is Person && enableNPCs)
-                        {
-                            AddQuestNPC(siteType, quest, spawnMarker, (Person)resource, parent);
-                        }
-                        else if (resource is Foe && enableFoes)
-                        {
-                            Foe foe = (Foe)resource;
-                            if (foe.KillCount < foe.SpawnCount)
-                                AddQuestFoe(siteType, quest, spawnMarker, foe, parent);
-                        }
+                        AddQuestNPC(siteType, quest, marker, (Person)resource, parent);
                     }
-                }
-
-                // Get selected item QuestMarker for this Place
-                if (enableItems && place.SiteDetails.questItemMarkers != null)
-                {
-                    QuestMarker itemMarker = place.SiteDetails.questItemMarkers[place.SiteDetails.selectedQuestItemMarker];
-                    if (itemMarker.targetResources != null)
+                    else if (resource is Foe && enableFoes)
                     {
-                        foreach (Symbol target in itemMarker.targetResources)
-                        {
-                            // Get target resource
-                            QuestResource resource = quest.GetResource(target);
-                            if (resource == null)
-                                continue;
-
-                            // Skip resources already injected into scene
-                            if (IsAlreadyInjected(resourceBehaviours, resource))
-                                continue;
-
-                            // Inject into scene
-                            if (resource is Item)
-                                AddQuestItem(siteType, quest, itemMarker, (Item)resource, parent);
-                        }
+                        Foe foe = (Foe)resource;
+                        if (foe.KillCount < foe.SpawnCount)
+                            AddQuestFoe(siteType, quest, marker, foe, parent);
+                    }
+                    else if (resource is Item)
+                    {
+                        AddQuestItem(siteType, quest, marker, (Item)resource, parent);
                     }
                 }
             }
@@ -939,7 +950,7 @@ namespace DaggerfallWorkshop.Utility
                 // Individuals are always flat1 no matter gender
                 flatData = FactionFile.GetFlatData(person.FactionData.flat1);
             }
-            if (person.Gender == Genders.Male)
+            else if (person.Gender == Genders.Male)
             {
                 // Male has flat1
                 flatData = FactionFile.GetFlatData(person.FactionData.flat1);
@@ -1141,6 +1152,8 @@ namespace DaggerfallWorkshop.Utility
             if (mobileUnit.Summary.Enemy.Behaviour != MobileBehaviour.Flying)
                 AlignControllerToGround(go.GetComponent<CharacterController>());
 
+            GameManager.Instance?.RaiseOnEnemySpawnEvent(go);
+
             return go;
         }
 
@@ -1170,7 +1183,7 @@ namespace DaggerfallWorkshop.Utility
                 {
                     // Assign gender randomly
                     MobileGender gender;
-                    if (UnityEngine.Random.Range(0f, 1f) < 0.5f)
+                    if (UnityEngine.Random.Range(0f, 1f) < 0.55f)
                         gender = MobileGender.Male;
                     else
                         gender = MobileGender.Female;
@@ -1202,6 +1215,8 @@ namespace DaggerfallWorkshop.Utility
 
                 // Disable GameObject, caller must set active when ready
                 go.SetActive(false);
+
+                GameManager.Instance?.RaiseOnEnemySpawnEvent(go);
 
                 // Add to list
                 gameObjects.Add(go);
@@ -1386,9 +1401,12 @@ namespace DaggerfallWorkshop.Utility
                 Vector3 v0 = door.Vert0;
                 Vector3 v2 = door.Vert2;
 
-                // Get door size
-                const float thickness = 0.05f;
-                Vector3 size = new Vector3(v2.x - v0.x, v2.y - v0.y, v2.z - v0.z) + door.Normal * thickness;
+                // Get absolute door size and make thickness uniform from largest width or depth
+                float width = Mathf.Abs(v2.x - v0.x);
+                float height = Mathf.Abs(v2.y - v0.y);
+                float depth = Mathf.Abs(v2.z - v0.z);
+                float thickness = Mathf.Max(width, depth);
+                Vector3 size = new Vector3(thickness, Mathf.Max(height, thickness), Mathf.Min(height, thickness));
 
                 // Add door to array
                 StaticDoor newDoor = new StaticDoor()

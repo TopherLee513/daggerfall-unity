@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -28,6 +28,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         FLCPlayer playerPanel;
         MultiFormatTextLabel messageLabel;
+        TextCursor textCursor;
 
         DaggerfallQuestPopupWindow.DaedraData daedraSummoned;
         Quest daedraQuest;
@@ -87,6 +88,10 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             playerPanel.Components.Add(messageLabel);
             playerPanel.OnMouseClick += PlayerPanel_OnMouseClick;
 
+            textCursor = new TextCursor();
+            textCursor.Enabled = false;
+            playerPanel.Components.Add(textCursor);
+
             // Initialise message to display,
             if (daedraQuest != null)
             {   // with the quest offer message.
@@ -108,12 +113,13 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
             if (lastChunk && !answerGiven)
             {
-                if (Input.GetKey(KeyCode.Y))
+                HotkeySequence.KeyModifiers keyModifiers = HotkeySequence.GetKeyboardKeyModifiers();
+                if (DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.Yes).IsUpWith(keyModifiers))
                 {
                     HandleAnswer(QuestMachine.QuestMessages.AcceptQuest);
-                    QuestMachine.Instance.InstantiateQuest(daedraQuest);
+                    QuestMachine.Instance.StartQuest(daedraQuest);
                 }
-                else if (Input.GetKey(KeyCode.N))
+                else if (DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.No).IsUpWith(keyModifiers))
                 {
                     HandleAnswer(QuestMachine.QuestMessages.RefuseQuest);
                     GameObjectHelper.CreateFoeSpawner(true, DaggerfallQuestPopupWindow.daedricFoes[UnityEngine.Random.Range(0, 5)], UnityEngine.Random.Range(3, 6), 8, 64);
@@ -124,6 +130,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         private void HandleAnswer(QuestMachine.QuestMessages qMessage)
         {
             lastChunk = false;
+            textCursor.Enabled = false;
             answerGiven = true;
             idx = 0;
             Message message = daedraQuest.GetMessage((int) qMessage);
@@ -145,6 +152,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 if (!answerGiven)
                 {   // Disable click and listen for Y/N keypress.
                     playerPanel.OnMouseClick -= PlayerPanel_OnMouseClick;
+                    textCursor.Position = new Vector2(310, 190);
+                    textCursor.Enabled = true;
+                    textCursor.BlinkOn();
                 }
             }
             idx += TokensPerChunk;

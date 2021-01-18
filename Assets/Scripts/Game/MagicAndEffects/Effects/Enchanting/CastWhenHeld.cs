@@ -1,10 +1,10 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    
+// Contributors:    Numidium
 // 
 // Notes:
 //
@@ -15,6 +15,7 @@ using DaggerfallConnect.Save;
 using DaggerfallConnect.FallExe;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Items;
+using DaggerfallWorkshop.Game.Formulas;
 
 namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 {
@@ -23,24 +24,21 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
     /// </summary>
     public class CastWhenHeld : BaseEntityEffect
     {
-        public static readonly string EffectKey = EnchantmentTypes.CastWhenHeld.ToString();
+        const int normalMagicItemDegradeRate = 4;
+        const int restingMagicItemDegradeRate = 60;
 
-        // UESP states CastWhenHeld magic items lose 105 durability points on equip and 1 point every minute
-        // This means most CastWhenHeld items would degrade very quickly, and I'm unable to reproduce this in classic
-        // Whether standing around, equipping/unequipping, fast travelling, or resting, held items do not degrade from "new"
-        // Only normal wear and tear during combat seems to lower condition
-        // TODO: Determine correct durability loss for CastWhenHeld items.
-        // http://en.uesp.net/wiki/Daggerfall:Magical_Items#Durability_of_Magical_Items
+        public static readonly string EffectKey = EnchantmentTypes.CastWhenHeld.ToString();
 
         public override void SetProperties()
         {
             properties.Key = EffectKey;
-            properties.GroupName = TextManager.Instance.GetText(textDatabase, EffectKey);
             properties.ShowSpellIcon = false;
             properties.AllowedCraftingStations = MagicCraftingStations.ItemMaker;
             properties.ItemMakerFlags = ItemMakerFlags.AllowMultiplePrimaryInstances | ItemMakerFlags.AlphaSortSecondaryList;
-            properties.EnchantmentPayloadFlags = EnchantmentPayloadFlags.Equipped;
+            properties.EnchantmentPayloadFlags = EnchantmentPayloadFlags.Equipped | EnchantmentPayloadFlags.MagicRound | EnchantmentPayloadFlags.RerollEffect;
         }
+
+        public override string GroupName => TextManager.Instance.GetLocalizedText(EffectKey);
 
         /// <summary>
         /// Outputs spells available to this item effect abstracted as EnchantmentSettings array.
@@ -65,7 +63,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                     EffectKey = EffectKey,
                     ClassicType = EnchantmentTypes.CastWhenHeld,
                     ClassicParam = id,
-                    PrimaryDisplayName = properties.GroupName,
+                    PrimaryDisplayName = GroupName,
                     SecondaryDisplayName = spellRecord.spellName,
                     EnchantCost = classicSpellCosts[i],
                 };
@@ -82,7 +80,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                     Version = 1,
                     EffectKey = EffectKey,
                     CustomParam = offer.Key,
-                    PrimaryDisplayName = properties.GroupName,
+                    PrimaryDisplayName = GroupName,
                     SecondaryDisplayName = offer.BundleSetttings.Name,
                     EnchantCost = offer.EnchantmentCost,
                 };
@@ -100,7 +98,10 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             base.EnchantmentPayloadCallback(context, param, sourceEntity, targetEntity, sourceItem, sourceDamage);
 
             // Validate
-            if (context != EnchantmentPayloadFlags.Equipped || param == null || sourceEntity == null || sourceItem == null)
+            if ((context != EnchantmentPayloadFlags.Equipped &&
+                 context != EnchantmentPayloadFlags.MagicRound &&
+                 context != EnchantmentPayloadFlags.RerollEffect) ||
+                param == null || sourceEntity == null || sourceItem == null)
                 return null;
 
             // Get caster effect manager
@@ -108,8 +109,41 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             if (!casterManager)
                 return null;
 
-            // Cast when held enchantment invokes a spell bundle that is permanent until item is removed
-            if (!string.IsNullOrEmpty(param.Value.CustomParam))
+            if (context == EnchantmentPayloadFlags.Equipped)
+            {
+                // Cast when held enchantment invokes a spell bundle that is permanent until item is removed
+                InstantiateSpellBundle(param.Value, sourceEntity, sourceItem, casterManager);
+            }
+            else if (context == EnchantmentPayloadFlags.MagicRound)
+            {
+                // Apply CastWhenHeld durability loss
+                ApplyDurabilityLoss(sourceItem, sourceEntity);
+            }
+            else if (context == EnchantmentPayloadFlags.RerollEffect)
+            {
+                // Recast spell bundle - previous instance has already been removed by EntityEffectManager prior to callback
+                InstantiateSpellBundle(param.Value, sourceEntity, sourceItem, casterManager, true);
+            }
+
+            return null;
+        }
+
+        void ApplyDurabilityLoss(DaggerfallUnityItem item, DaggerfallEntityBehaviour entity)
+        {
+            if (!GameManager.Instance.EntityEffectBroker.SyntheticTimeIncrease)
+            {
+                int degradeRate = GameManager.Instance.PlayerEntity.IsResting ? restingMagicItemDegradeRate : normalMagicItemDegradeRate;
+                if (GameManager.Instance.EntityEffectBroker.MagicRoundsSinceStartup % degradeRate == 0)
+                {
+                    item.LowerCondition(1, entity.Entity, entity.Entity.Items);
+                    //UnityEngine.Debug.LogFormat("CastWhenHeld degraded '{0}' by 1 durability point. {1}/{2} remaining.", item.LongName, item.currentCondition, item.maxCondition);
+                }
+            }
+        }
+
+        void InstantiateSpellBundle(EnchantmentParam param, DaggerfallEntityBehaviour sourceEntity, DaggerfallUnityItem sourceItem, EntityEffectManager casterManager, bool recast = false)
+        {
+            if (!string.IsNullOrEmpty(param.CustomParam))
             {
                 // TODO: Instantiate a custom spell bundle
             }
@@ -117,7 +151,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             {
                 // Instantiate a classic spell bundle
                 SpellRecord.SpellRecordData spell;
-                if (GameManager.Instance.EntityEffectBroker.GetClassicSpellRecord(param.Value.ClassicParam, out spell))
+                if (GameManager.Instance.EntityEffectBroker.GetClassicSpellRecord(param.ClassicParam, out spell))
                 {
                     UnityEngine.Debug.LogFormat("CastWhenHeld callback found enchantment '{0}'", spell.spellName);
 
@@ -128,19 +162,27 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                         // Assign bundle
                         EntityEffectBundle bundle = new EntityEffectBundle(bundleSettings, sourceEntity);
                         bundle.FromEquippedItem = sourceItem;
+                        bundle.AddRuntimeFlags(BundleRuntimeFlags.ItemRecastEnabled);
                         casterManager.AssignBundle(bundle, AssignBundleFlags.BypassSavingThrows);
 
                         // Play cast sound on equip for player only
                         if (casterManager.IsPlayerEntity)
-                            casterManager.PlayCastSound(sourceEntity, casterManager.GetCastSoundID(bundle.Settings.ElementType));
+                            casterManager.PlayCastSound(sourceEntity, casterManager.GetCastSoundID(bundle.Settings.ElementType), true);
 
-                        // TODO: Apply durability loss to equipped item on equip and over time
-                        // http://en.uesp.net/wiki/Daggerfall:Magical_Items#Durability_of_Magical_Items
+                        // Classic uses an item last "cast when held" effect spell cost to determine its durability loss on equip
+                        // Here, all effects are considered, as it seems more coherent to do so
+                        if (!recast)
+                        {
+                            int amount = FormulaHelper.CalculateCastingCost(spell, false);
+                            sourceItem.LowerCondition(amount, sourceEntity.Entity, sourceEntity.Entity.Items);
+                            //UnityEngine.Debug.LogFormat("CastWhenHeld degraded '{0}' by {1} durability points on equip. {2}/{3} remaining.", sourceItem.LongName, amount, sourceItem.currentCondition, sourceItem.maxCondition);
+                        }
                     }
+
+                    // Store equip time as last reroll time
+                    sourceItem.timeEffectsLastRerolled = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime();
                 }
             }
-
-            return null;
         }
 
         #endregion

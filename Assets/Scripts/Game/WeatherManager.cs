@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -76,6 +76,7 @@ namespace DaggerfallWorkshop.Game
         public FogSettings DungeonFogSettings = new FogSettings { fogMode = FogMode.Exponential, density = 0.005f, startDistance = 0, endDistance = 0, excludeSkybox = false };
 
         public FogSettings currentOutdoorFogSettings;
+        Color previousOutdoorFogColor;
 
         // this is needed so weather from savegame load is not overwritten by code in StreamingWorld_OnInitWorld()
         // e.g. weather fog, going to interior, saving, restarting, loading save, going outdoors -> fog should still be present (without this workaround it is not)
@@ -258,6 +259,22 @@ namespace DaggerfallWorkshop.Game
         {
             IsRaining = false;
             IsStorming = false;
+        }
+
+        public static bool IsSnowFreeClimate(int climateIndex)
+        {
+            var climate = (MapsFile.Climates)climateIndex;
+            switch (climate)
+            {
+                case MapsFile.Climates.Desert:
+                case MapsFile.Climates.Desert2:
+                case MapsFile.Climates.Rainforest:
+                case MapsFile.Climates.Subtropical:
+                    return true;
+
+                default:
+                    return false;
+            }
         }
 
         #endregion
@@ -517,17 +534,20 @@ namespace DaggerfallWorkshop.Game
 
         void OnTransitionToInterior(PlayerEnterExit.TransitionEventArgs args)
         {
+            previousOutdoorFogColor = RenderSettings.fogColor;
             SetFog(InteriorFogSettings, true);
         }
 
         void OnTransitionToDungeon(PlayerEnterExit.TransitionEventArgs args)
         {
+            previousOutdoorFogColor = RenderSettings.fogColor;
             SetFog(DungeonFogSettings, true);
         }
 
         void OnTransitionToExterior(PlayerEnterExit.TransitionEventArgs args)
         {
             SetFog(currentOutdoorFogSettings, false);
+            RenderSettings.fogColor = previousOutdoorFogColor;
         }
 
         #endregion

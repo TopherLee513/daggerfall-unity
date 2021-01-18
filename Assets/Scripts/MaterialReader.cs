@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -17,6 +17,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using DaggerfallConnect;
 using DaggerfallConnect.Utility;
 using DaggerfallConnect.Arena2;
@@ -87,6 +88,9 @@ namespace DaggerfallWorkshop
     {
         #region Fields
 
+        // Constants
+        public const int FireWallsArchive = 356;
+
         // General settings
         public bool AtlasTextures = true;
         public bool CompressSkyTextures = false;
@@ -128,8 +132,12 @@ namespace DaggerfallWorkshop
         public const string _DaggerfallTilemapTextureArrayShaderName = "Daggerfall/TilemapTextureArray";
         public const string _DaggerfallBillboardShaderName = "Daggerfall/Billboard";
         public const string _DaggerfallBillboardBatchShaderName = "Daggerfall/BillboardBatch";
+        public const string _DaggerfallGhostShaderName = "Daggerfall/GhostShader";
         public const string _DaggerfallPixelFontShaderName = "Daggerfall/PixelFont";
         public const string _DaggerfallSDFFontShaderName = "Daggerfall/SDFFont";
+        public const string _DaggerfallRetroDepthShaderName = "Daggerfall/DepthProcessShader";
+        public const string _DaggerfallRetroPosterizationShaderName = "Daggerfall/RetroPosterization";
+        public const string _DaggerfallRetroPalettizationShaderName = "Daggerfall/RetroPalettization";
 
         DaggerfallUnity dfUnity;
         TextureReader textureReader;
@@ -347,7 +355,7 @@ namespace DaggerfallWorkshop
             int key = MakeTextureKey((short)archive, (byte)record, (byte)frame);
             if (materialDict.ContainsKey(key))
             {
-                CachedMaterial cm = materialDict[key];
+                CachedMaterial cm = GetMaterialFromCache(key);
                 rectOut = cm.singleRect;
                 return cm.material;
             }
@@ -448,6 +456,7 @@ namespace DaggerfallWorkshop
                 recordScales = recordScales,
                 recordOffsets = recordOffsets,
                 singleFrameCount = results.textureFile.GetFrameCount(record),
+                framesPerSecond = archive == FireWallsArchive ? 5 : 0, // Slow down fire walls
             };
             materialDict.Add(key, newcm);
 
@@ -458,8 +467,7 @@ namespace DaggerfallWorkshop
         /// Gets Unity Material atlas from Daggerfall texture archive.
         /// </summary>
         /// <param name="archive">Archive index to create atlas from.</param>
-        /// <param name="alphaIndex">Index to receive transparent alpha.</param>
-        /// <param name="rectsOut">Array of rects, one for each record sub-texture and frame.</param>
+        /// <param name="alphaIndex">Index to receive transparent alpha.</param>        
         /// <param name="padding">Number of pixels each sub-texture.</param>
         /// <param name="maxAtlasSize">Max size of atlas.</param>
         /// <param name="rectsOut">Array of rects, one for each record sub-texture and frame.</param>
@@ -468,7 +476,6 @@ namespace DaggerfallWorkshop
         /// <param name="dilate">Blend texture into surrounding empty pixels.</param>
         /// <param name="shrinkUVs">Number of pixels to shrink UV rect.</param>
         /// <param name="copyToOppositeBorder">Copy texture edges to opposite border. Requires border, will overwrite dilate.</param>
-        /// <param name="shader">Shader for material. If null, DefaultShaderName will be applied.</param>
         /// <param name="isBillboard">Set true when creating atlas material for simple billboards.</param>
         /// <returns>Material or null.</returns>
         public Material GetMaterialAtlas(
@@ -495,7 +502,7 @@ namespace DaggerfallWorkshop
             int key = MakeTextureKey((short)archive, (byte)0, (byte)0, AtlasKeyGroup);
             if (materialDict.ContainsKey(key))
             {
-                CachedMaterial cm = materialDict[key];
+                CachedMaterial cm = GetMaterialFromCache(key);
                 if (cm.filterMode == MainFilterMode)
                 {
                     // Properties are the same
@@ -590,7 +597,7 @@ namespace DaggerfallWorkshop
             int key = MakeTextureKey((short)archive, (byte)0, (byte)0, TileMapKeyGroup);
             if (materialDict.ContainsKey(key))
             {
-                CachedMaterial cm = materialDict[key];
+                CachedMaterial cm = GetMaterialFromCache(key);
                 if (cm.filterMode == MainFilterMode)
                 {
                     // Properties are the same
@@ -646,7 +653,7 @@ namespace DaggerfallWorkshop
             int key = MakeTextureKey((short)archive, (byte)0, (byte)0, TileMapKeyGroup);
             if (materialDict.ContainsKey(key))
             {
-                CachedMaterial cm = materialDict[key];
+                CachedMaterial cm = GetMaterialFromCache(key);
                 if (cm.filterMode == MainFilterMode)
                 {
                     // Properties are the same
@@ -713,7 +720,7 @@ namespace DaggerfallWorkshop
             int key = MakeTextureKey((short)archive, (byte)record, (byte)frame);
             if (materialDict.ContainsKey(key))
             {
-                cachedMaterialOut = materialDict[key];
+                cachedMaterialOut = GetMaterialFromCache(key);
                 return true;
             }
             else
@@ -766,7 +773,7 @@ namespace DaggerfallWorkshop
             int key = MakeTextureKey((short)archive, (byte)0, (byte)0, AtlasKeyGroup);
             if (materialDict.ContainsKey(key))
             {
-                cachedMaterialOut = materialDict[key];
+                cachedMaterialOut = GetMaterialFromCache(key);
                 return true;
             }
 
@@ -786,7 +793,7 @@ namespace DaggerfallWorkshop
             int key = MakeTextureKey((short)archive, (byte)record, (byte)frame, CustomBillboardKeyGroup);
             if (materialDict.ContainsKey(key))
             {
-                cachedMaterialOut = materialDict[key];
+                cachedMaterialOut = GetMaterialFromCache(key);
                 return true;
             }
 
@@ -867,6 +874,16 @@ namespace DaggerfallWorkshop
         }
 
         /// <summary>
+        /// Removes from cache all materials that have not been accessed from the time in minutes defined
+        /// by <paramref name="threshold"/>.
+        /// </summary>
+        internal void PruneCache(float time, float threshold)
+        {
+            foreach (var item in materialDict.Where(x => time - x.Value.timeStamp > threshold).ToList())
+                materialDict.Remove(item.Key);
+        }
+
+        /// <summary>
         /// Clears material cache dictionary, forcing material to reload.
         /// </summary>
         public void ClearCache()
@@ -933,7 +950,23 @@ namespace DaggerfallWorkshop
             materialOut = GetMaterial(archive, record);
             int key = MakeTextureKey((short)archive, (byte)record);
 
-            return materialDict[key];
+            return GetMaterialFromCache(key);
+        }
+
+        private CachedMaterial GetMaterialFromCache(int key)
+        {
+            CachedMaterial cachedMaterial = materialDict[key];
+
+            // Update timestamp of last access, but only if difference is
+            // significant to limit the number of reassignment to dictionary.
+            float time = Time.realtimeSinceStartup;
+            if (time - cachedMaterial.timeStamp > 59)
+            {
+                cachedMaterial.timeStamp = time;
+                materialDict[key] = cachedMaterial;
+            }
+
+            return cachedMaterial;
         }
 
         private bool ReadyCheck()

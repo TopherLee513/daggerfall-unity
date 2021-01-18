@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -64,7 +64,7 @@ namespace DaggerfallWorkshop.Game
         void Update()
         {
             if (GetRecoilSetting(DaggerfallUnity.Settings.CameraRecoilStrength) == CameraRecoilSetting.Off ||
-                GameManager.IsGamePaused) // prevent continuous spinning on pause
+                GameManager.IsGamePaused || GameManager.Instance.PlayerMouseLook.cursorActive) // prevent continuous spinning on pause
                 return;
             else
                 cameraRecoilSetting = GetRecoilSetting(DaggerfallUnity.Settings.CameraRecoilStrength);

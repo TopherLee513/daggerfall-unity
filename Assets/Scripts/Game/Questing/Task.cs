@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -300,6 +300,17 @@ namespace DaggerfallWorkshop.Game.Questing
         {
             dropped = true;
             IsTriggered = false;
+        }
+
+        /// <summary>
+        /// Called by parent quest when it ends so that all actions of this task can dispose themselves.
+        /// </summary>
+        public void DisposeActions()
+        {
+            foreach (IQuestAction action in actions)
+            {
+                action.Dispose();
+            }
         }
 
         /// <summary>

@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -15,7 +15,7 @@ using System;
 namespace DaggerfallWorkshop.Game.UserInterface
 {
     /// <summary>
-    /// Item scroller UI panel component composed of scrollbar, scroll buttons & items list.
+    /// Item scroller UI panel component composed of scrollbar, scroll buttons and items list.
     /// </summary>
     public class ItemListScroller : Panel
     {
@@ -126,6 +126,9 @@ namespace DaggerfallWorkshop.Game.UserInterface
         public delegate void OnItemClickHandler(DaggerfallUnityItem item);
         public event OnItemClickHandler OnItemClick;
 
+        public delegate void OnItemRightClickHandler(DaggerfallUnityItem item);
+        public event OnItemRightClickHandler OnItemRightClick;
+
         public delegate void OnItemHoverHandler(DaggerfallUnityItem item);
         public event OnItemHoverHandler OnItemHover;
 
@@ -223,7 +226,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         /// <param name="listCols">Number of items displayed per row.</param>
         /// <param name="itemListRect">Item list coordinate rect, excluding scrollbar.</param>
         /// <param name="itemsRects">Individual items display coordinate rects. (1 per width*height)</param>
-        /// <param name="miscLabelTemplate">Template for misc label: relative position, font, horiz & vert alignment, text scale. (defaults: Vector2.zero, Font4, Left, Top, 1)</param>
+        /// <param name="miscLabelTemplate">Template for misc label: relative position, font, horizontal and vertical alignment, text scale. (defaults: Vector2.zero, Font4, Left, Top, 1)</param>
         /// <param name="toolTip">Tool tip class to use if items should display tooltips.</param>
         /// <param name="itemMarginSize">Individual item display margin size.</param>
         /// <param name="textScale">Text scale factor for stack labels.</param>
@@ -334,6 +337,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 itemButtons[i].ToolTip = toolTip;
                 itemButtons[i].Tag = i;
                 itemButtons[i].OnMouseClick += ItemButton_OnMouseClick;
+                itemButtons[i].OnRightMouseClick += ItemButton_OnRightMouseClick;
                 itemButtons[i].OnMouseEnter += ItemButton_OnMouseEnter;
                 itemButtons[i].OnMouseScrollUp += ItemButton_OnMouseEnter;
                 itemButtons[i].OnMouseScrollDown += ItemButton_OnMouseEnter;
@@ -428,7 +432,11 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
                 // Set image to button icon
                 itemIconPanels[i].BackgroundTexture = image.texture;
-                itemIconPanels[i].Size = new Vector2(image.texture.width, image.texture.height);
+                // Use texture size if base image size is zero (i.e. new images that are not present in classic data)
+                if (image.width != 0 && image.height != 0)
+                    itemIconPanels[i].Size = new Vector2(image.width, image.height);
+                else
+                    itemIconPanels[i].Size = new Vector2(image.texture.width, image.texture.height);
 
                 // Set stack count
                 if (item.stackCount > 1)
@@ -450,7 +458,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
                 // Tooltip text
                 itemButtons[i].ToolTipText =
-                    (item.ItemGroup == ItemGroups.Books && !item.IsArtifact) ? DaggerfallUnity.Instance.ItemHelper.getBookNameByMessage(item.message, item.LongName) : item.LongName;
+                    (item.ItemGroup == ItemGroups.Books && !item.IsArtifact) ? DaggerfallUnity.Instance.ItemHelper.GetBookTitle(item.message, item.LongName) : item.LongName;
             }
         }
 
@@ -520,7 +528,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
         #region Event handlers
 
-        void ItemButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
+        void ItemButton_OnClick(BaseScreenComponent sender, Vector2 position, bool rightClick)
         {
             // Get index
             int index = (GetScrollIndex() * listWidth) + (int)sender.Tag;
@@ -529,10 +537,23 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
             // Get item and raise item click event
             DaggerfallUnityItem item = items[index];
-            if (item != null && OnItemClick != null)
-                OnItemClick(item);
+
+            if (!rightClick && item != null && OnItemClick != null)
+                    OnItemClick(item);
+            else if (item != null && OnItemRightClick != null)
+                    OnItemRightClick(item);
 
             ItemButton_OnMouseEnter(sender);
+        }
+
+        void ItemButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
+        {
+            ItemButton_OnClick(sender, position, false);
+        }
+
+        void ItemButton_OnRightMouseClick(BaseScreenComponent sender, Vector2 position)
+        {
+            ItemButton_OnClick(sender, position, true);
         }
 
         void ItemButton_OnMouseEnter(BaseScreenComponent sender)

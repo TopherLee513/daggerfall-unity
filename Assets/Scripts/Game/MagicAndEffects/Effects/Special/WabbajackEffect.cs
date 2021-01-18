@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -80,9 +80,13 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                 if (questResourceBehaviour && !questResourceBehaviour.IsFoeDead)
                     return null;
 
+                string[] enemyNames = TextManager.Instance.GetLocalizedTextList("enemyNames");
+                if (enemyNames == null)
+                    throw new System.Exception("enemyNames array text not found");
+
                 // Switch entity
                 targetEntity.gameObject.SetActive(false);
-                GameObject gameObject = GameObjectHelper.CreateEnemy(HardStrings.enemyNames[(int)enemyType], enemyType, targetEntity.transform.localPosition, MobileGender.Unspecified, parentTransform);
+                GameObject gameObject = GameObjectHelper.CreateEnemy(enemyNames[(int)enemyType], enemyType, targetEntity.transform.localPosition, MobileGender.Unspecified, parentTransform);
                 DaggerfallEntityBehaviour newEnemyBehaviour = gameObject.GetComponent<DaggerfallEntityBehaviour>();
                 EnemyEntity newEnemy = (EnemyEntity)newEnemyBehaviour.Entity;
                 newEnemy.WabbajackActive = true;

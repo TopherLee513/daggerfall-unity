@@ -7,6 +7,7 @@
 -- Edited for Daggerfall Unity by Jay_H
 Messages: 11
 Quest: A0C00Y07
+DisplayName: The Exterminator
 -- Message panels
 QRC:
 
@@ -30,7 +31,7 @@ QuestComplete:  [1004]
 <ce>                Here is the _gold_ gold that I promised.
 
 RumorsDuringQuest:  [1005]
-<ce>                   I think its hilarious! _qgiver_'s
+<ce>                   I think it's hilarious! _qgiver_'s
 <ce>                  _house_ is overrun with giant bugs!
                                      <--->
 <ce>                    I feel sorry for _qgiver_. %g3
@@ -149,22 +150,22 @@ _S.03_ task:
 variable _S.04_
 _spawn1_ task:
 	when _S.01_ and _S.04_ and not _S.03_
-	create foe _bats_ every 1 minutes indefinitely with 100% success 
+	create foe _bats_ every 2 minutes indefinitely with 100% success 
 
 variable _S.05_
 _spawn2_ task:
 	when _S.01_ and _S.05_ and not _S.03_
-	create foe _rats_ every 1 minutes indefinitely with 100% success 
+	create foe _rats_ every 2 minutes indefinitely with 100% success 
 
 variable _S.06_
 _spawn3_ task:
 	when _S.01_ and _S.06_ and not _S.03_
-	create foe _scorpions_ every 2 minutes indefinitely with 100% success 
+	create foe _scorpions_ every 3 minutes indefinitely with 100% success 
 
 variable _S.07_
 _spawn4_ task:
 	when _S.01_ and _S.07_ and not _S.03_
-	create foe _spiders_ every 2 minutes indefinitely with 100% success 
+	create foe _spiders_ every 3 minutes indefinitely with 100% success 
 
 _clearclick_ task:
 	when not _S.03_ and _questdone_ 
