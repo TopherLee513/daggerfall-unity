@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -189,9 +189,9 @@ namespace DaggerfallWorkshop.Game.UserInterface
         /// <summary>
         /// Gets result values from a row of size 2.
         /// </summary>
-        public Tuple<int, int> GetIntTuple(int row = 0)
+        public DaggerfallWorkshop.Utility.Tuple<int, int> GetIntTuple(int row = 0)
         {
-            return Tuple<int, int>.Make(GetIntValue(row, 0), GetIntValue(row, 1));
+            return DaggerfallWorkshop.Utility.Tuple<int, int>.Make(GetIntValue(row, 0), GetIntValue(row, 1));
         }
 
         /// <summary>
@@ -221,9 +221,9 @@ namespace DaggerfallWorkshop.Game.UserInterface
         /// <summary>
         /// Gets result values from a row of size 2.
         /// </summary>
-        public Tuple<float, float> GetFloatTuple(int row = 0)
+        public DaggerfallWorkshop.Utility.Tuple<float, float> GetFloatTuple(int row = 0)
         {
-            return Tuple<float, float>.Make(GetFloatValue(row, 0), GetFloatValue(row, 1));
+            return DaggerfallWorkshop.Utility.Tuple<float, float>.Make(GetFloatValue(row, 0), GetFloatValue(row, 1));
         }
 
         #endregion

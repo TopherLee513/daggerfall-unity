@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -244,7 +244,10 @@ namespace DaggerfallWorkshop.Utility
                         if (IsActionDoor(ref blockData, obj, modelReference))
                         {
                             GameObject cgo = AddActionDoor(dfUnity, modelId, obj, actionDoorsNode.transform, loadID);
-                            cgo.GetComponent<DaggerfallMesh>().SetDungeonTextures(textureTable);
+
+                            var dfMesh = cgo.GetComponent<DaggerfallMesh>();
+                            if (dfMesh)
+                                dfMesh.SetDungeonTextures(textureTable);
 
                             // Add action component to door if it also has an action
                             if (HasAction(obj))
@@ -375,6 +378,16 @@ namespace DaggerfallWorkshop.Utility
                             AssignFixedTreasure(flatObject, obj, ref blockData, dungeonType);
                         }
 
+                        // Parent random treasure to marker to use actions on parent
+                        const int randomTreasureFlatIndex = 19;
+                        if (archive == TextureReader.EditorFlatsTextureArchive &&
+                            record == randomTreasureFlatIndex &&
+                            dfUnity.Option_ImportRandomTreasure &&
+                            dfUnity.Option_LootContainerPrefab)
+                        {
+                            AddRandomTreasure(obj, flatObject.transform, ref blockData, dungeonType, true);
+                        }
+
                         //add action component to flat if it has an action
                         if (obj.Resources.FlatResource.Action > 0)
                         {
@@ -388,36 +401,6 @@ namespace DaggerfallWorkshop.Utility
             editorObjectsOut = editorObjects.ToArray();
             startMarkersOut = startMarkers.ToArray();
             enterMarkersOut = enterMarkers.ToArray();
-        }
-
-        public static void AddTreasure(
-            GameObject go,
-            DFBlock.RdbObject[] editorObjects,
-            ref DFBlock blockData,
-            DFRegion.DungeonTypes dungeonType,
-            bool serialize = true)
-        {
-            const int randomTreasureFlatIndex = 19;
-
-            DaggerfallUnity dfUnity = DaggerfallUnity.Instance;
-            if (!dfUnity.IsReady)
-                return;
-
-            // Must have import enabled and prefab set
-            if (!dfUnity.Option_ImportRandomTreasure || dfUnity.Option_LootContainerPrefab == null)
-                return;
-
-            // Add parent node
-            GameObject randomTreasureNode = new GameObject("Random Treasure");
-            randomTreasureNode.transform.parent = go.transform;
-
-            // Iterate editor flats for random treasure
-            for (int i = 0; i < editorObjects.Length; i++)
-            {
-                // Add treasure flat
-                if (editorObjects[i].Resources.FlatResource.TextureRecord == randomTreasureFlatIndex)
-                    AddRandomTreasure(editorObjects[i], randomTreasureNode.transform, ref blockData, dungeonType, serialize);
-            }
         }
 
         public static void AssignFixedTreasure(
@@ -636,10 +619,11 @@ namespace DaggerfallWorkshop.Utility
 
                         // Get model data
                         ModelData modelData;
-                        dfUnity.MeshReader.GetModelData(modelId, out modelData);
-
-                        // Add to static doors
-                        exitDoorsOut.AddRange(GameObjectHelper.GetStaticDoors(ref modelData, blockData.Index, 0, modelMatrix));
+                        if (dfUnity.MeshReader.GetModelData(modelId, out modelData))
+                        {
+                            // Add to static doors
+                            exitDoorsOut.AddRange(GameObjectHelper.GetStaticDoors(ref modelData, blockData.Index, 0, modelMatrix));
+                        }
 
                         // Check if model has an action record
                         bool hasAction = HasAction(obj);
@@ -649,6 +633,13 @@ namespace DaggerfallWorkshop.Utility
                         GameObject standaloneObject = MeshReplacement.ImportCustomGameobject(modelId, parent, modelMatrix);
                         if (standaloneObject == null)
                         {
+                            // Special handling for dungeon exits - collider handled as a special case in DaggerfallStaticDoors startup
+                            if (modelId == exitDoorModelID)
+                            {
+                                AddStandaloneModel(dfUnity, ref modelData, modelMatrix, modelsParent, hasAction, true);
+                                continue;
+                            }
+
                             // Special handling for tapestries and banners
                             // Some of these are so far out from wall player can become stuck behind them
                             // Adding model invidually without collider to avoid problem
@@ -660,7 +651,7 @@ namespace DaggerfallWorkshop.Utility
                             }
 
                             // Add or combine
-                            if (combiner == null || hasAction)
+                            if (combiner == null || hasAction || PlayerActivate.HasCustomActivation(modelId))
                             {
                                 standaloneObject = AddStandaloneModel(dfUnity, ref modelData, modelMatrix, parent, hasAction);
                                 standaloneObject.GetComponent<DaggerfallMesh>().SetDungeonTextures(textureTable);
@@ -714,16 +705,18 @@ namespace DaggerfallWorkshop.Utility
             Matrix4x4 matrix,
             Transform parent,
             bool overrideStatic = false,
-            bool ignoreCollider = false)
+            bool ignoreCollider = false,
+            bool convexCollider = false)
         {
             // Determine static flag
             bool makeStatic = (dfUnity.Option_SetStaticFlags && !overrideStatic) ? true : false;
 
             // Add GameObject
             uint modelID = (uint)modelData.DFMesh.ObjectId;
-            GameObject go = GameObjectHelper.CreateDaggerfallMeshGameObject(modelID, parent, makeStatic, null, ignoreCollider);
+            GameObject go = GameObjectHelper.CreateDaggerfallMeshGameObject(modelID, parent, makeStatic, null, ignoreCollider, convexCollider);
             go.transform.position = matrix.GetColumn(3);
-            go.transform.rotation = GameObjectHelper.QuaternionFromMatrix(matrix);
+            go.transform.rotation = matrix.rotation;
+            go.transform.localScale = matrix.lossyScale;
 
             return go;
         }
@@ -753,9 +746,7 @@ namespace DaggerfallWorkshop.Utility
         private static bool HasAction(DFBlock.RdbObject obj)
         {
             DFBlock.RdbActionResource action = obj.Resources.ModelResource.ActionResource;
-            if (action.Flags != 0)
-                return true;
-            return false;
+            return (action.Flags != 0);
         }
 
         /// <summary>
@@ -763,6 +754,14 @@ namespace DaggerfallWorkshop.Utility
         /// </summary>
         private static void GetRotationActionVector(ref DaggerfallAction action, DFBlock.RdbActionAxes axis)
         {
+            // HACK: Workaround for a specific rotation case where TRP object has a raw axis value > 6
+            // If more examples with a raw axis value > 6 can be found, there's possibly some global bitwise op needed here instead
+            if (action.ActionAxisRawValue == 13 && action.ModelDescription == "TRP")
+            {
+                axis = DFBlock.RdbActionAxes.NegativeX;
+                action.Magnitude = 400; // Classic magnitude is 392 but player is able to stick to that angle so increasing to 400
+            }
+
             Vector3 vector = Vector3.zero;
             float magnitude = action.Magnitude;
             switch (axis)
@@ -1116,16 +1115,21 @@ namespace DaggerfallWorkshop.Utility
             Matrix4x4 modelMatrix = GetModelMatrix(obj);
 
             // Instantiate door prefab and add model
-            GameObject go = GameObjectHelper.InstantiatePrefab(dfUnity.Option_DungeonDoorPrefab.gameObject, string.Empty, parent, Vector3.zero);
-            GameObjectHelper.CreateDaggerfallMeshGameObject(modelId, parent, false, go, true);
-
-            // Resize box collider to new mesh bounds
-            BoxCollider boxCollider = go.GetComponent<BoxCollider>();
-            MeshRenderer meshRenderer = go.GetComponent<MeshRenderer>();
-            if (boxCollider != null && meshRenderer != null)
+            // A custom prefab can be provided by mods and must include DaggerfallActionDoor component with all requirements.
+            GameObject go = MeshReplacement.ImportCustomGameobject(modelId, parent, Matrix4x4.identity);
+            if (!go)
             {
-                boxCollider.center = meshRenderer.bounds.center;
-                boxCollider.size = meshRenderer.bounds.size;
+                go = GameObjectHelper.InstantiatePrefab(dfUnity.Option_DungeonDoorPrefab.gameObject, string.Empty, parent, Vector3.zero);
+                GameObjectHelper.CreateDaggerfallMeshGameObject(modelId, parent, false, go, true);
+
+                // Resize box collider to new mesh bounds
+                BoxCollider boxCollider = go.GetComponent<BoxCollider>();
+                MeshRenderer meshRenderer = go.GetComponent<MeshRenderer>();
+                if (boxCollider != null && meshRenderer != null)
+                {
+                    boxCollider.center = meshRenderer.bounds.center;
+                    boxCollider.size = meshRenderer.bounds.size;
+                }
             }
 
             // Get rotation angle for each axis
@@ -1141,13 +1145,19 @@ namespace DaggerfallWorkshop.Utility
 
             // Get action door script
             DaggerfallActionDoor actionDoor = go.GetComponent<DaggerfallActionDoor>();
+            if (actionDoor)
+            {
+                // Set starting lock value
+                byte[] lockValues = { 0x00, 0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E, 0x10, 0x12, 0x14, 0x19, 0x1E, 0x32, 0x80, 0xFF };
+                actionDoor.StartingLockValue = lockValues[obj.Resources.ModelResource.TriggerFlag_StartingLock >> 4];
 
-            // Set starting lock value
-            byte[] lockValues = { 0x00, 0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E, 0x10, 0x12, 0x14, 0x19, 0x1E, 0x32, 0x80, 0xFF };
-            actionDoor.StartingLockValue = lockValues[obj.Resources.ModelResource.TriggerFlag_StartingLock >> 4];
-
-            // Set LoadID
-            actionDoor.LoadID = loadID;
+                // Set LoadID
+                actionDoor.LoadID = loadID;
+            }
+            else
+            {
+                Debug.LogError($"Failed to get DaggerfallActionDoor on {modelId}. Make sure is added to door prefab.");
+            }
 
             return go;
         }
@@ -1534,6 +1544,9 @@ namespace DaggerfallWorkshop.Utility
             {
                 enemy.LoadID = loadID;
             }
+
+            GameManager.Instance?.RaiseOnEnemySpawnEvent(go);
+
         }
 
         private static DaggerfallLoot AddRandomTreasure(

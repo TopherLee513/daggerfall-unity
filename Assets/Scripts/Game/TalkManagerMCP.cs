@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -14,21 +14,6 @@ namespace DaggerfallWorkshop.Game
 {
     public partial class TalkManager : IMacroContextProvider
     {
-        /// <summary>
-        /// Oaths by race.
-        /// </summary>
-        enum RacialOaths
-        {
-            None = 0,
-            Nord = 201,
-            Khajiit = 202,
-            Redguard = 203,
-            Breton = 204,
-            Argonian = 205,
-            Bosmer = 206,
-            Altmer = 207,
-            Dunmer = 208,
-        }
 
         public class TalkManagerContext
         {
@@ -64,8 +49,8 @@ namespace DaggerfallWorkshop.Game
             public override string Name()
             {
                 // Used for greeting messages only: 7215, 7216, 7217
-                if (GameManager.Instance.TalkManager.IsGreeting)
-                    return GameManager.Instance.TalkManager.NameNPC;
+                if (!string.IsNullOrEmpty(GameManager.Instance.TalkManager.GreetingNameNPC))
+                    return GameManager.Instance.TalkManager.GreetingNameNPC;
                 else
                     return null;
             }
@@ -76,7 +61,7 @@ namespace DaggerfallWorkshop.Game
                 {
                     return GameManager.Instance.TalkManager.GetKeySubjectLocationCompassDirection();
                 }
-                return TextManager.Instance.GetText(textDatabase, "resolvingError");
+                return TextManager.Instance.GetLocalizedText("resolvingError");
             }
 
             public override string DialogHint()
@@ -97,7 +82,7 @@ namespace DaggerfallWorkshop.Game
                 {
                     return GameManager.Instance.TalkManager.GetOrganizationInfo(parent.currentQuestionListItem);
                 }
-                return TextManager.Instance.GetText(textDatabase, "resolvingError");
+                return TextManager.Instance.GetLocalizedText("resolvingError");
             }
 
             public override string DialogHint2()
@@ -118,42 +103,26 @@ namespace DaggerfallWorkshop.Game
                 {
                     return GameManager.Instance.TalkManager.GetOrganizationInfo(parent.currentQuestionListItem);
                 }
-                return TextManager.Instance.GetText(textDatabase, "resolvingError");
+                return TextManager.Instance.GetLocalizedText("resolvingError");
             }
+
+            // Oaths are declared by NPC race according to the race index used in FACTION.TXT.
+            // Unfortunately, classic never uses this faction race ID but, instead, uses the
+            // hardcoded index race of each region, which is not the same. In classic, this
+            // results in all NPCs from High Rock saying Nord oaths, while all NPCs in Hammerfell
+            // will say Khajiit oaths.
+            // Instead, DFU uses the faction race ID to return the correct oath.
+            // For the list of oaths, see https://www.imperial-library.info/content/daggerfall-oaths-and-expletives
             public override string Oath()
             {
-                RacialOaths whichOath = RacialOaths.None;
-                switch (parent.npcRace)
-                {
-                    case Races.Argonian:
-                        whichOath = RacialOaths.Argonian;
-                        break;
-                    case Races.Breton:
-                        whichOath = RacialOaths.Breton;
-                        break;
-                    case Races.DarkElf:
-                        whichOath = RacialOaths.Dunmer;
-                        break;
-                    case Races.HighElf:
-                        whichOath = RacialOaths.Altmer;
-                        break;
-                    case Races.Khajiit:
-                        whichOath = RacialOaths.Khajiit;
-                        break;
-                    case Races.Nord:
-                        whichOath = RacialOaths.Nord;
-                        break;
-                    case Races.Redguard:
-                        whichOath = RacialOaths.Redguard;
-                        break;
-                    //case Races.Vampire:                       // TODO: Restore this via racial override effect
-                    //    whichOath = RacialOaths.Dunmer;
-                    //    break;
-                    case Races.WoodElf:
-                        whichOath = RacialOaths.Bosmer;
-                        break;
-                }
-                return DaggerfallUnity.Instance.TextProvider.GetRandomText((int)whichOath);
+                // Get NPC race with fallback to race of current region
+                Races race = parent.npcRace;
+                if (race == Races.None)
+                    race = GameManager.Instance.PlayerGPS.GetRaceOfCurrentRegion();
+
+                int oathId = (int)RaceTemplate.GetFactionRaceFromRace(race);
+
+                return DaggerfallUnity.Instance.TextProvider.GetRandomText(201 + oathId);
             }
 
             // He/She
@@ -163,9 +132,9 @@ namespace DaggerfallWorkshop.Game
                 {
                 default:
                 case Game.Entity.Genders.Male:
-                    return HardStrings.pronounHe;
+                    return TextManager.Instance.GetLocalizedText("pronounHe");
                 case Game.Entity.Genders.Female:
-                    return HardStrings.pronounShe;
+                    return TextManager.Instance.GetLocalizedText("pronounShe");
                 }
             }
 
@@ -176,9 +145,22 @@ namespace DaggerfallWorkshop.Game
                 {
                 default:
                 case Game.Entity.Genders.Male:
-                    return HardStrings.pronounHim;
+                    return TextManager.Instance.GetLocalizedText("pronounHim");
                 case Game.Entity.Genders.Female:
-                    return HardStrings.pronounHer;
+                    return TextManager.Instance.GetLocalizedText("pronounHer");
+                }
+            }
+
+            // His/Her
+            public override string Pronoun3()
+            {
+                switch (parent.potentialQuestorGender)
+                {
+                    default:
+                    case Game.Entity.Genders.Male:
+                        return TextManager.Instance.GetLocalizedText("pronounHis");
+                    case Game.Entity.Genders.Female:
+                        return TextManager.Instance.GetLocalizedText("pronounHer");
                 }
             }
 

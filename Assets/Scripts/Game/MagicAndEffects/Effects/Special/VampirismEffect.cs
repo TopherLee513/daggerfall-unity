@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -96,6 +96,17 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
             // Our dark transformation is complete - cure everything on player (including stage one disease)
             GameManager.Instance.PlayerEffectManager.CureAll();
+
+            // Refresh head texture after effect starts
+            DaggerfallUI.RefreshLargeHUDHeadTexture();
+        }
+
+        public override void Resume(EntityEffectManager.EffectSaveData_v1 effectData, EntityEffectManager manager, DaggerfallEntityBehaviour caster = null)
+        {
+            base.Resume(effectData, manager, caster);
+
+            // Refresh head texture after effect resumes
+            DaggerfallUI.RefreshLargeHUDHeadTexture();
         }
 
         public override void ConstantEffect()
@@ -185,7 +196,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                 DaggerfallMessageBox mb = new DaggerfallMessageBox(DaggerfallUI.Instance.UserInterfaceManager);
                 mb.PreviousWindow = DaggerfallUI.Instance.UserInterfaceManager.TopWindow;
                 mb.ClickAnywhereToClose = true;
-                mb.SetText(TextManager.Instance.GetText(textDatabase, "vampireFastTravelDay"));
+                mb.SetText(TextManager.Instance.GetLocalizedText("sunlightDamageFastTravelDay"));
                 mb.Show();
                 return false;
             }
@@ -197,7 +208,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         {
             const int notSatedTextID = 36;
 
-            if (DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime() - lastTimeFed > DaggerfallDateTime.MinutesPerDay)
+            if (!IsSatiated())
             {
                 DaggerfallMessageBox mb = new DaggerfallMessageBox(DaggerfallUI.Instance.UserInterfaceManager);
                 mb.PreviousWindow = DaggerfallUI.Instance.UserInterfaceManager.TopWindow;
@@ -218,7 +229,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             if (isCureQuest)
             {
                 if (DFRandom.random_range_inclusive(10, 100) < 30)
-                    QuestMachine.Instance.InstantiateQuest("$CUREVAM");
+                    QuestMachine.Instance.StartQuest("$CUREVAM");
             }
             else if (hasStartedInitialVampireQuest)
             {
@@ -237,12 +248,12 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                         reputation,
                         GameManager.Instance.PlayerEntity.Level);
                     if (offeredQuest != null)
-                        QuestMachine.Instance.InstantiateQuest(offeredQuest);
+                        QuestMachine.Instance.StartQuest(offeredQuest);
                 }
             }
             else if (DFRandom.random_range_inclusive(1, 100) < 50)
             {
-                QuestMachine.Instance.InstantiateQuest("P0A01L00");
+                QuestMachine.Instance.StartQuest("P0A01L00");
                 hasStartedInitialVampireQuest = true;
             }
         }
@@ -258,6 +269,9 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
             // Remove player metal immunity
             entityBehaviour.Entity.MinMetalToHit = WeaponMaterialTypes.Iron;
+
+            // Refresh head texture after effect ends
+            DaggerfallUI.RefreshLargeHUDHeadTexture();
         }
 
         #endregion
@@ -270,6 +284,14 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         public void UpdateSatiation()
         {
             lastTimeFed = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime();
+        }
+
+        /// <summary>
+        /// Gets whether vampire thirst is satiated.
+        /// </summary>
+        public bool IsSatiated()
+        {
+            return DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime() - lastTimeFed <= DaggerfallDateTime.MinutesPerDay;
         }
 
         /// <summary>
@@ -291,7 +313,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         /// </summary>
         public string GetClanName()
         {
-            return TextManager.Instance.GetText(racesTextDatabase, vampireClan.ToString().ToLower());
+            return TextManager.Instance.GetLocalizedText(vampireClan.ToString().ToLower());
         }
 
         #endregion
@@ -303,7 +325,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             // Clone birth race and assign custom settings
             // New compound races will retain almost everything from birth race
             compoundRace = GameManager.Instance.PlayerEntity.BirthRaceTemplate.Clone();
-            compoundRace.Name = TextManager.Instance.GetText(racesTextDatabase, "vampire");
+            compoundRace.Name = TextManager.Instance.GetLocalizedText("vampire");
 
             // Set special vampire flags
             compoundRace.ImmunityFlags |= DFCareer.EffectFlags.Paralysis;

@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -73,11 +73,12 @@ namespace DaggerfallWorkshop.Game.Questing.Actions
         {
             base.Update(caller);
 
-            DaggerfallVidPlayerWindow vidPlayerWindow = new DaggerfallVidPlayerWindow(DaggerfallUI.UIManager, videoName);
+            DaggerfallVidPlayerWindow vidPlayerWindow = (DaggerfallVidPlayerWindow)
+                UIWindowFactory.GetInstanceWithArgs(UIWindowType.VidPlayer, new object[] { DaggerfallUI.UIManager, videoName });
+            vidPlayerWindow.EndOnAnyKey = false;
             DaggerfallUI.UIManager.PushWindow(vidPlayerWindow);
 
             SetComplete();
-
         }
 
         #region Serialization

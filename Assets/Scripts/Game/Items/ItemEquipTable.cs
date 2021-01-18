@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -123,11 +123,7 @@ namespace DaggerfallWorkshop.Game.Items
             }
 
             // Equipping a shield will always unequip 2H weapon
-            if (item.ItemGroup == ItemGroups.Armor &&
-                (item.TemplateIndex == (int)Armor.Kite_Shield ||
-                item.TemplateIndex == (int)Armor.Round_Shield ||
-                item.TemplateIndex == (int)Armor.Tower_Shield ||
-                item.TemplateIndex == (int)Armor.Buckler))
+            if (GetItemHands(item) == ItemHands.LeftOnly)
             {
                 // If holding a 2H weapon then unequip
                 DaggerfallUnityItem rightHandItem = equipTable[(int)EquipSlots.RightHand];
@@ -249,7 +245,10 @@ namespace DaggerfallWorkshop.Game.Items
         /// <returns>EquipSlot.</returns>
         public EquipSlots GetEquipSlot(DaggerfallUnityItem item)
         {
-            EquipSlots result = EquipSlots.None;
+            // Check for a custom item defining an equip slot, and return if so, else if None then continue
+            EquipSlots result = item.GetEquipSlot();
+            if (result != EquipSlots.None)
+                return result;
 
             // Resolve based on equipment category
             switch (item.ItemGroup)
@@ -437,7 +436,7 @@ namespace DaggerfallWorkshop.Game.Items
         {
             // If a 2H weapon is currently equipped then next weapon will always replace it in right hand
             DaggerfallUnityItem rightHandItem = equipTable[(int)EquipSlots.RightHand];
-            if (rightHandItem != null && GetItemHands(rightHandItem) == ItemHands.Both)
+            if (rightHandItem != null && GetItemHands(rightHandItem) == ItemHands.Both && GetItemHands(item) != ItemHands.LeftOnly)
                 return EquipSlots.RightHand;
 
             // Find best hand for this item
@@ -629,9 +628,11 @@ namespace DaggerfallWorkshop.Game.Items
                 case Weapons.Staff:
                 case Weapons.Flail:
                 case Weapons.Warhammer:
+                    return ItemHands.Both;
+
                 case Weapons.Short_Bow:
                 case Weapons.Long_Bow:
-                    return ItemHands.Both;
+                    return DaggerfallUnity.Settings.BowLeftHandWithSwitching ? ItemHands.LeftOnly : ItemHands.Both;
             }
 
             // Compare against supported armor types
@@ -644,8 +645,8 @@ namespace DaggerfallWorkshop.Game.Items
                     return ItemHands.LeftOnly;
             }
 
-            // Nothing found
-            return ItemHands.None;
+            // Nothing found, return custom item value or None.
+            return item.GetItemHands();
         }
 
         #endregion

@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -53,10 +53,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         float prisonUpdateInterval = 0.3f; // Approximated to classic based on measuring a video recording.
 
         // From FALL.EXE offset 0x1B34E0
-        byte[] PenaltyPerLegalRepPoint  = {  0x05,  0x05,  0x06,  0x06,   0x0A,   0x05,  0x05,  0x03,  0x08,  0x08, 0x00,  0x06,  0x00, 0x00 };
-        short[] BasePenaltyAmounts      = { 0x12C,  0xC8, 0x258, 0x3E8, 0x2710,   0xC8, 0x1F4,  0x64, 0x1F4, 0x1F4, 0x00,  0xC8,  0xC8, 0x00 };
-        short[] MinimumPenaltyAmounts   = {  0x32,  0x0A,  0x50,  0x0A, 0x2328,   0x00,  0x0A,  0x02,  0x00,  0x00, 0x00,  0x05,  0x05, 0x00 };
-        short[] MaximumPenaltyAmounts   = { 0x3E8, 0x320, 0x4B0, 0x5DC, 0x2EE0, 0x2EE0, 0x5DC, 0x2BC,  0x00,  0x00, 0x00, 0x3E8, 0x3E8, 0x00 };
+        // Vanilla unused crime values adjusted below by adding reasonable values for any zeros and a column for loan default crime.
+        // Mnemonics                        TryB&E  Tressp  B&E Assault  Murder  TaxEv CrimCon Vagrant Smuggle Pirate HiTre PickP Theft Treason LoanD
+        byte[] PenaltyPerLegalRepPoint  = {  0x05,  0x05,  0x06,  0x06,   0x0A,   0x05,  0x05,  0x03,  0x08,  0x08, 0x09,  0x06,  0x00,  0x08,  0x00 };
+        short[] BasePenaltyAmounts      = { 0x12C,  0xC8, 0x258, 0x3E8, 0x2710,   0xC8, 0x1F4,  0x64, 0x1F4, 0x1F4, 0x4B0, 0xC8,  0xC8,  0x3E8, 0x64 };
+        short[] MinimumPenaltyAmounts   = {  0x32,  0x0A,  0x50,  0x0A, 0x2328,   0x0A,  0x0A,  0x02,  0x0A,  0x0A, 0xA0,  0x05,  0x05,  0x0A,  0x04 };
+        short[] MaximumPenaltyAmounts   = { 0x3E8, 0x320, 0x4B0, 0x5DC, 0x2EE0, 0x2EE0, 0x5DC, 0x2BC, 0x5DC, 0x5DC, 0x7D0, 0x3E8, 0x3E8, 0x5DC, 0x2BC };
 
         public int PunishmentType { get { return punishmentType; } }
         public int Fine { get { return fine; } }
@@ -134,11 +136,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 int penaltyAmount = 0;
 
                 if (legalRep >= 0)
-                    penaltyAmount = PenaltyPerLegalRepPoint[crimeType] * legalRep
-                    + BasePenaltyAmounts[crimeType];
+                    penaltyAmount = PenaltyPerLegalRepPoint[crimeType] * legalRep + BasePenaltyAmounts[crimeType];
                 else
-                    penaltyAmount = BasePenaltyAmounts[crimeType]
-                    - PenaltyPerLegalRepPoint[crimeType] * legalRep;
+                    penaltyAmount = BasePenaltyAmounts[crimeType] - PenaltyPerLegalRepPoint[crimeType] * legalRep;
 
                 if (penaltyAmount > MaximumPenaltyAmounts[crimeType])
                     penaltyAmount = MaximumPenaltyAmounts[crimeType];
@@ -171,7 +171,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 if (crimeType == 4 || crimeType == 3) // Assault or murder
                 {
                     // If player is a member of the Dark Brotherhood, they may be rescued for a violent crime
-                    Guilds.Guild guild = GameManager.Instance.GuildManager.GetGuild((int)FactionFile.FactionIDs.The_Dark_Brotherhood);
+                    Guilds.IGuild guild = GameManager.Instance.GuildManager.GetGuild((int)FactionFile.FactionIDs.The_Dark_Brotherhood);
                     if (guild.IsMember())
                     {
                         if (guild.Rank >= UnityEngine.Random.Range(0, 20))
@@ -192,7 +192,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 if (crimeType <= 2 || crimeType == 11) // Attempted breaking and entering, trespassing, breaking and entering, pickpocketing
                 {
                     // If player is a member of the Thieves Guild, they may be rescued for a thieving crime
-                    Guilds.Guild guild = GameManager.Instance.GuildManager.GetGuild((int)FactionFile.FactionIDs.The_Thieves_Guild);
+                    Guilds.IGuild guild = GameManager.Instance.GuildManager.GetGuild((int)FactionFile.FactionIDs.The_Thieves_Guild);
                     if (guild.IsMember())
                     {
                         if (guild.Rank >= UnityEngine.Random.Range(0, 20))
@@ -456,7 +456,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         public void UpdatePrisonScreen()
         {
             daysInPrisonLeft--;
-            daysUntilFreedomLabel.Text = HardStrings.daysUntilFreedom;
+            daysUntilFreedomLabel.Text = TextManager.Instance.GetLocalizedText("daysUntilFreedom");
             daysUntilFreedomLabel.Text = daysUntilFreedomLabel.Text.Replace("%d", daysInPrisonLeft.ToString());
 
             if (daysInPrisonLeft == 0)
@@ -510,7 +510,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             courtPanel.Size = TextureReplacement.GetSize(nativeTexture, nativeImgName2);
             courtPanel.BackgroundTexture = nativeTexture;
 
-            daysUntilFreedomLabel.Text = HardStrings.daysUntilFreedom;
+            daysUntilFreedomLabel.Text = TextManager.Instance.GetLocalizedText("daysUntilFreedom");
             daysUntilFreedomLabel.Text = daysUntilFreedomLabel.Text.Replace("%d", daysInPrison.ToString());
         }
     }

@@ -83,7 +83,7 @@ _prophet_ spends %g3 time in %g3 room in _prophouse_, writing.
 _prophet_ hasn't ever gotten on well with __qgiver_.
 
 RumorsPostsuccess:  [1007]
-That _prophet_ was a charletan who found some fools in __tavern_.
+That _prophet_ was a charlatan who found some fools in __tavern_.
 
 QuestorPostsuccess:  [1008]
 For what thou hast done for the faith, I'd be happy to help thee.
@@ -202,7 +202,7 @@ Message:  1016
 <ce>                                  it.
 
 Message:  1017
-_lover_ -- ah, poor =lover_. Well, %g keeps mostly to %g3-self.
+_lover_ -- ah, poor =lover_. Well, %g keeps mostly to %g2self.
 <--->
 _lover_ is a =lover_ in __lover_. They say %g mourns for %g3 lost love.
 <--->
@@ -411,7 +411,6 @@ Message:  1037
  I found a finger which I presume was once attached
  to _priest_. It was curiously,
  even ceremoniously severed.
-<--->
  
 
 
@@ -476,7 +475,8 @@ Place _mondung_ remote dungeon4
 Place _tavern_ remote tavern
 Place _prophouse_ remote tavern
 
-Clock _queston_ 26.09:20 0 flag 1 range 0 1
+Clock _queston_ 00:00 flag 1 range 0 1
+--quest timer was too short, edited to more generous
 Clock _S.04_ 2.02:00 20.20:00
 Clock _S.06_ 03:20 11:40
 Clock _S.14_ 2.02:00 20.20:00
@@ -572,8 +572,12 @@ _S.15_ task:
 	say 1025 
 
 _S.16_ task:
-	log 1036 step 5 
+	have _letter_ set _S.16a_
 	give pc _letter_ notify 1015 
+
+_S.16a_ task:
+	log 1036 step 5 
+--this log was getting written too soon
 
 _S.17_ task:
 	clicked item _finger_ 

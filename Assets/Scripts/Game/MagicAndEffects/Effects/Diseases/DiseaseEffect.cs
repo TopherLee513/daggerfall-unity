@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -32,7 +32,6 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         protected int forcedRoundsRemaining = 1;
         protected Diseases classicDiseaseType = Diseases.None;
         protected DiseaseData diseaseData;
-        protected TextFile.Token[] contractedMessageTokens;
         protected bool incubationOver = false;
         protected uint lastDay;
         protected int daysOfSymptomsLeft;
@@ -58,10 +57,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             set { daysOfSymptomsLeft = value; }
         }
 
-        public TextFile.Token[] ContractedMessageTokens
-        {
-            get { return contractedMessageTokens; }
-        }
+        public abstract TextFile.Token[] ContractedMessageTokens { get; }
 
         #endregion
 
@@ -166,7 +162,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             }
 
             // Output alert text
-            DaggerfallUI.AddHUDText(UserInterfaceWindows.HardStrings.youFeelSomewhatBad, 2.5f);
+            DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("youFeelSomewhatBad"), 2.5f);
         }
 
         /// <summary>
@@ -242,9 +238,14 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             return diseaseDataSources[(int)diseaseType];
         }
 
-        protected bool IsDiseasePermanent()
+        public bool IsDiseasePermanent()
         {
             return (diseaseData.daysOfSymptomsMin == permanentDiseaseValue);
+        }
+
+        public bool IsDiseaseCompleted()
+        {
+            return (daysOfSymptomsLeft == completedDiseaseValue);
         }
 
         #endregion

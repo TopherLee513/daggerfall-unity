@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -299,7 +299,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             }
 
             if (host.Entity == GameManager.Instance.PlayerEntity)
-                DaggerfallUI.AddHUDText(HardStrings.youFeelSomewhatBad);
+                DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("youFeelSomewhatBad"));
 
             if (--minutesRemaining <= 0)
                 currentState = PoisonStates.Complete;

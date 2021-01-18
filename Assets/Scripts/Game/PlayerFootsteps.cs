@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -56,12 +56,17 @@ namespace DaggerfallWorkshop.Game
         bool lostGrounding;
         float distance;
         bool alternateStep = false;
+        bool ignoreLostGrounding = true;
 
         SoundClips currentFootstepSound1 = SoundClips.None;
         SoundClips currentFootstepSound2 = SoundClips.None;
+
         DaggerfallDateTime.Seasons currentSeason = DaggerfallDateTime.Seasons.Summer;
+        int currentClimateIndex;
         bool isInside = false;
         bool isInOutsideWater = false;
+        bool isInOutsidePath = false;
+        bool isOnStaticGeometry = false;
 
         void Start()
         {
@@ -90,6 +95,18 @@ namespace DaggerfallWorkshop.Game
 
         void FixedUpdate()
         {
+
+            //this condition helps prevent making a nuisance footstep noise when the player first
+            //loads a save, or into an interior or exterior location
+            if (GameManager.Instance.SaveLoadManager.LoadInProgress || GameManager.Instance.StreamingWorld.IsRepositioningPlayer)
+            {
+                ignoreLostGrounding = true;
+                return;
+            }
+
+            DaggerfallDateTime.Seasons playerSeason = dfUnity.WorldTime.Now.SeasonValue;
+            int playerClimateIndex = GameManager.Instance.PlayerGPS.CurrentClimateIndex;
+
             // Get player inside flag
             // Can only do this when PlayerEnterExit is available, otherwise default to true
             bool playerInside = (playerEnterExit == null) ? true : playerEnterExit.IsPlayerInside;
@@ -98,14 +115,22 @@ namespace DaggerfallWorkshop.Game
             // Play splash footsteps whether player is walking on or swimming in exterior water
             bool playerOnExteriorWater = (GameManager.Instance.PlayerMotor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.Swimming || GameManager.Instance.PlayerMotor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.WaterWalking);
 
-            // Change footstep sounds between winter/summer variants or when player enters/exits an interior space
-            if (dfUnity.WorldTime.Now.SeasonValue != currentSeason || isInside != playerInside || playerOnExteriorWater != isInOutsideWater)
+            bool playerOnExteriorPath = GameManager.Instance.PlayerMotor.OnExteriorPath;
+            bool playerOnStaticGeometry = GameManager.Instance.PlayerMotor.OnExteriorStaticGeometry;
+
+            // Change footstep sounds between winter/summer variants, when player enters/exits an interior space, or changes between path, water, or other outdoor ground
+            if (playerSeason != currentSeason || playerClimateIndex != currentClimateIndex || isInside != playerInside || playerOnExteriorWater != isInOutsideWater || playerOnExteriorPath != isInOutsidePath || playerOnStaticGeometry != isOnStaticGeometry)
             {
-                currentSeason = dfUnity.WorldTime.Now.SeasonValue;
+                currentSeason = playerSeason;
+                currentClimateIndex = playerClimateIndex;
                 isInside = playerInside;
                 isInOutsideWater = playerOnExteriorWater;
-                if (!isInside)
-                    if (currentSeason == DaggerfallDateTime.Seasons.Winter)
+                isInOutsidePath = playerOnExteriorPath;
+                isOnStaticGeometry = playerOnStaticGeometry;
+
+                if (!isInside && !playerOnStaticGeometry)
+                {
+                    if (currentSeason == DaggerfallDateTime.Seasons.Winter && !WeatherManager.IsSnowFreeClimate(currentClimateIndex))
                     {
                         currentFootstepSound1 = FootstepSoundSnow1;
                         currentFootstepSound2 = FootstepSoundSnow2;
@@ -115,6 +140,7 @@ namespace DaggerfallWorkshop.Game
                         currentFootstepSound1 = FootstepSoundOutside1;
                         currentFootstepSound2 = FootstepSoundOutside2;
                     }
+                }
                 else if (playerInBuilding)
                 {
                     currentFootstepSound1 = FootstepSoundBuilding1;
@@ -139,6 +165,15 @@ namespace DaggerfallWorkshop.Game
                 clip2 = null;
             }
 
+            // walking on path tile
+            if (playerOnExteriorPath)
+            {
+                currentFootstepSound1 = FootstepSoundDungeon1;
+                currentFootstepSound2 = FootstepSoundDungeon2;
+                clip1 = null;
+                clip2 = null;
+            }
+
             // Use water sounds if in dungeon water
             if (GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeon && playerEnterExit.blockWaterLevel != 10000)
             {
@@ -151,7 +186,7 @@ namespace DaggerfallWorkshop.Game
                     clip2 = null;
                 }
                 // In water, shallow depth
-                else if ((currentFootstepSound1 != FootstepSoundShallow) && !playerEnterExit.IsPlayerSwimming && (playerMotor.transform.position.y - 0.95f) < (playerEnterExit.blockWaterLevel * -1 * MeshReader.GlobalScale))
+                else if ((currentFootstepSound1 != FootstepSoundShallow) && !playerEnterExit.IsPlayerSwimming && (playerMotor.transform.position.y - 0.57f) < (playerEnterExit.blockWaterLevel * -1 * MeshReader.GlobalScale))
                 {
                     currentFootstepSound1 = FootstepSoundShallow;
                     currentFootstepSound2 = FootstepSoundShallow;
@@ -192,7 +227,7 @@ namespace DaggerfallWorkshop.Game
             // Check if player is grounded
             // Note: In classic, submerged "footstep" sound is only played when walking on the floor while in the water, but it sounds like a swimming sound
             // and when outside is played while swimming at the water's surface, so it seems better to play it all the time while submerged in water.
-            if (currentFootstepSound1 != FootstepSoundSubmerged)
+            if (!playerMotor.IsSwimming)
             {
                 if (!IsGrounded())
                 {
@@ -209,10 +244,25 @@ namespace DaggerfallWorkshop.Game
                         distance = 0f;
                         lastPosition = GetHorizontalPosition();
                         lostGrounding = false;
+
+                        if (ignoreLostGrounding)
+                            ignoreLostGrounding = false;
+                        else if (customAudioSource && clip1 && clip2)
+                        {
+                            if (!alternateStep)
+                                customAudioSource.PlayOneShot(clip1, FootstepVolumeScale * DaggerfallUnity.Settings.SoundVolume);
+                            else
+                                customAudioSource.PlayOneShot(clip2, FootstepVolumeScale * DaggerfallUnity.Settings.SoundVolume);
+
+                            alternateStep = (!alternateStep);
+                        }
                         return;
                     }
                 }
             }
+
+            if (playerMotor.IsStandingStill)
+                return;
 
             // Get distance player travelled horizontally
             Vector3 position = GetHorizontalPosition();
@@ -227,10 +277,14 @@ namespace DaggerfallWorkshop.Game
             // Play sound if over distance threshold
             if (distance > threshold && customAudioSource && clip1 && clip2)
             {
+                float volumeScale = FootstepVolumeScale;
+                if (playerMotor.IsMovingLessThanHalfSpeed)
+                    volumeScale *= 0.5f;
+
                 if (!alternateStep)
-                    customAudioSource.PlayOneShot(clip1, FootstepVolumeScale * DaggerfallUnity.Settings.SoundVolume);
+                    customAudioSource.PlayOneShot(clip1, volumeScale * DaggerfallUnity.Settings.SoundVolume);
                 else
-                    customAudioSource.PlayOneShot(clip2, FootstepVolumeScale * DaggerfallUnity.Settings.SoundVolume);
+                    customAudioSource.PlayOneShot(clip2, volumeScale * DaggerfallUnity.Settings.SoundVolume);
 
                 alternateStep = (!alternateStep);
                 distance = 0f;
@@ -246,12 +300,7 @@ namespace DaggerfallWorkshop.Game
 
         private bool IsGrounded()
         {
-            RaycastHit hit;
-            Ray ray = new Ray(transform.position, Vector3.down);
-            if (Physics.Raycast(ray, out hit, GroundDistance))
-                return true;
-            else
-                return false;
+            return playerMotor.IsGrounded;
         }
 
         // Capture this message so we can play fall damage sound

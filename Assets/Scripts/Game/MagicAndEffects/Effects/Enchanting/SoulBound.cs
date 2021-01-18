@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -35,12 +35,13 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         public override void SetProperties()
         {
             properties.Key = EffectKey;
-            properties.GroupName = TextManager.Instance.GetText(textDatabase, EffectKey);
             properties.ShowSpellIcon = false;
             properties.AllowedCraftingStations = MagicCraftingStations.ItemMaker;
             properties.ItemMakerFlags = ItemMakerFlags.AlphaSortSecondaryList;
             properties.EnchantmentPayloadFlags = EnchantmentPayloadFlags.Enchanted | EnchantmentPayloadFlags.Breaks;
         }
+
+        public override string GroupName => TextManager.Instance.GetLocalizedText(EffectKey);
 
         public override EnchantmentSettings[] GetEnchantmentSettings()
         {
@@ -59,8 +60,8 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                     EffectKey = EffectKey,
                     ClassicType = EnchantmentTypes.SoulBound,
                     ClassicParam = (short)i,
-                    PrimaryDisplayName = properties.GroupName,
-                    SecondaryDisplayName = EnemyBasics.Enemies[i].Name,
+                    PrimaryDisplayName = GroupName,
+                    SecondaryDisplayName = TextManager.Instance.GetLocalizedEnemyName(EnemyBasics.Enemies[i].ID),
                     EnchantCost = classicParamCosts[i],
                 };
 
@@ -103,6 +104,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
         void EnumerateFilledTraps()
         {
+            // Count regular filled soul traps
             Array.Clear(enumeratedTraps, 0, enumeratedTraps.Length);
             ItemCollection playerItems = GameManager.Instance.PlayerEntity.Items;
             for (int i = 0; i < playerItems.Count; i++)
@@ -114,6 +116,14 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                         enumeratedTraps[(int)item.TrappedSoulType]++;
                 }
             }
+
+            // Count filled Azura's Star soul trap
+            List<DaggerfallUnityItem> amulets = GameManager.Instance.PlayerEntity.Items.SearchItems(ItemGroups.Jewellery, (int)Jewellery.Amulet);
+            foreach (DaggerfallUnityItem amulet in amulets)
+            {
+                if (amulet.ContainsEnchantment(EnchantmentTypes.SpecialArtifactEffect, (short)ArtifactsSubTypes.Azuras_Star) && amulet.TrappedSoulType != MobileTypes.None)
+                    enumeratedTraps[(int)amulet.TrappedSoulType]++;
+            }
         }
 
         void RemoveFilledTrap(int monsterID)
@@ -121,6 +131,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             if (monsterID < 0 || monsterID >= monsterIDCount)
                 return;
 
+            // Remove regular filled soul traps matching soul type first
             ItemCollection playerItems = GameManager.Instance.PlayerEntity.Items;
             for (int i = 0; i < playerItems.Count; i++)
             {
@@ -130,9 +141,17 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                     if ((int)item.TrappedSoulType == monsterID)
                     {
                         playerItems.RemoveItem(item);
-                        break;
+                        return;
                     }
                 }
+            }
+
+            // Empty Azura's Star matching trapped soul type
+            List<DaggerfallUnityItem> amulets = GameManager.Instance.PlayerEntity.Items.SearchItems(ItemGroups.Jewellery, (int)Jewellery.Amulet);
+            foreach (DaggerfallUnityItem amulet in amulets)
+            {
+                if (amulet.ContainsEnchantment(EnchantmentTypes.SpecialArtifactEffect, (short)ArtifactsSubTypes.Azuras_Star) && (int)amulet.TrappedSoulType == monsterID)
+                    amulet.TrappedSoulType = MobileTypes.None;
             }
         }
 

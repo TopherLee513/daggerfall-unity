@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -58,15 +58,11 @@ namespace DaggerfallWorkshop.Utility
                 ci.supportsWinter = false;
 
             // Handle swamp climate sets with missing winter textures
-            if (climate == ClimateBases.Swamp)
+            if (climate == ClimateBases.Swamp &&
+                ci.textureSet == DFLocation.ClimateTextureSet.Exterior_MagesGuild ||
+                ci.textureSet == DFLocation.ClimateTextureSet.Exterior_Castle && record > 3)
             {
-                switch (ci.textureSet)
-                {
-                    case DFLocation.ClimateTextureSet.Exterior_Castle:
-                    case DFLocation.ClimateTextureSet.Exterior_MagesGuild:
-                        ci.supportsWinter = false;
-                        break;
-                }
+                ci.supportsWinter = false;
             }
 
             // Handle archives with missing winter textures
@@ -239,13 +235,20 @@ namespace DaggerfallWorkshop.Utility
             // Exclude ranges which return a false-positive from this method but actually use normal emission
             // Currently spells and lights
             if (archive >= 375 && archive <= 379 ||
-                archive == 210)
+                archive == 210 || archive == 280)
             {
                 return false;
             }
 
+            // Special cases before normalisation
+            if (archive == 36 && record == 2 ||
+                archive == 151 && record == 3 ||
+                archive == 154 && record == 3 ||
+                archive == 351 && record == 3)
+                return true;
+
             // Normalise archive index
-            archive = (archive - (archive / 100) * 100);
+            archive = archive % 100;
 
             // First check if texture archive even has a window, based on known archives
             switch (archive)
@@ -260,6 +263,7 @@ namespace DaggerfallWorkshop.Utility
                 case 026:
                 case 027:
                 case 035:
+                case 036:
                 case 038:
                 case 039:
                 case 042:

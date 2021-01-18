@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -23,12 +23,12 @@ using FullSerializer;
 namespace DaggerfallWorkshop.Game.Serialization
 {
     /// <summary>
-    /// Enum of stateful game object types that implement ISerializableGameObject.
+    /// Enum of stateful game object types that implement <see cref="ISerializableGameObject"/>.
     /// To add a new type of stateful game object:
     ///     - add type name here
     ///     - add a condition to SerializableStateManager.GetStatefulGameObjectType()
     ///     - add serializer methods
-    ///     - add to SerializableStateManager.CacheScene() & RestoreCachedScene()
+    ///     - add to SerializableStateManager.CacheScene() and RestoreCachedScene()
     /// </summary>
     public enum StatefulGameObjectTypes
     {
@@ -93,6 +93,8 @@ namespace DaggerfallWorkshop.Game.Serialization
         public FaceDetails[] escortingFaces;
         public SceneCache_v1 sceneCache;
         public TravelMapSaveData travelMapData;
+        public AdvancedClimbingData_v1 advancedClimbingState;
+        public ModInfo_v1[] modInfoData;
     }
 
     #endregion
@@ -145,6 +147,7 @@ namespace DaggerfallWorkshop.Game.Serialization
         public TransportModes transportMode;
         public PlayerPositionData_v1 boardShipPosition;  // Holds the player position from before boarding a ship.
         public Dictionary<int, GuildMembership_v1> guildMemberships;
+        public Dictionary<int, GuildMembership_v1> vampireMemberships;
         public List<string> oneTimeQuestsAccepted;
     }
 
@@ -170,6 +173,7 @@ namespace DaggerfallWorkshop.Game.Serialization
         public uint timeOfLastSkillIncreaseCheck;
         public uint[] skillsRecentlyRaised;
         public int startingLevelUpSkillSum;
+        public int currentLevelUpSkillSum;
         public ulong[] equipTable;
         public ItemData_v1[] items;
         public ItemData_v1[] wagonItems;
@@ -209,6 +213,8 @@ namespace DaggerfallWorkshop.Game.Serialization
         public short reputationSGroup9;
         public short reputationSGroup10;
         public VampireClans previousVampireClan;
+        public int daedraSummonDay;
+        public int daedraSummonIndex;
     }
 
     [fsObject("v1")]
@@ -226,8 +232,11 @@ namespace DaggerfallWorkshop.Game.Serialization
         public bool insideDungeon;
         public bool insideBuilding;
         public bool insideOpenShop;
+        public bool insideTavern;
+        public bool insideResidence;
         public string terrainSamplerName;
         public int terrainSamplerVersion;
+        public QuestSmallerDungeonsState smallerDungeonsState;
         public StaticDoor[] exteriorDoors;
         public PlayerGPS.DiscoveredBuilding buildingDiscoveryData;
         public WeatherType weather;
@@ -372,6 +381,8 @@ namespace DaggerfallWorkshop.Game.Serialization
         public int questFoeSpellQueueIndex;
         public int questFoeItemQueueIndex;
         public bool wabbajackActive;
+        public int team;
+        public bool specialTransformationCompleted;
     }
 
     #endregion
@@ -444,6 +455,16 @@ namespace DaggerfallWorkshop.Game.Serialization
         public string dfuVersion;
     }
 
+    [fsObject("v1")]
+    public class ModInfo_v1
+    {
+        public string fileName;
+        public string title;
+        public string guid;
+        public string version;
+        public int loadPriority;
+    }
+
     #endregion
 
     #region Bank Data
@@ -484,6 +505,20 @@ namespace DaggerfallWorkshop.Game.Serialization
         public bool sleepInn = true;
         public bool speedCautious = true;
         public bool travelShip = true;
+    }
+
+    #endregion
+
+    #region Climbing Data
+
+    [fsObject("v1")]
+    public struct AdvancedClimbingData_v1
+    {
+        public bool isClimbing;
+        public float climbingStartTimer;
+        public float climbingContinueTimer;
+        public Vector3 wallDirection;
+        public Vector3 myLedgeDirection;
     }
 
     #endregion

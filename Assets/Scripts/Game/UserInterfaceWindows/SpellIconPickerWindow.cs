@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -33,8 +33,6 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         #endregion
 
         #region UI Controls
-
-        const string textDatabase = "DaggerfallUI";
 
         Panel mainPanel = new Panel();
         ScrollingPanel scrollingPanel = new ScrollingPanel();
@@ -159,7 +157,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
 
             // Add classic icons
-            AddHeaderLabel(parent, ref xpos, ref ypos, TextManager.Instance.GetText(textDatabase, "classicIcons"));
+            AddHeaderLabel(parent, ref xpos, ref ypos, TextManager.Instance.GetLocalizedText("classicIcons"));
             rowCount = 0;
             for (int i = 0; i < iconCollection.SpellIconCount; i++)
             {

@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -61,6 +61,14 @@ namespace DaggerfallWorkshop.Game
             get { return GetDisplayName(); }
         }
 
+        /// <summary>
+        /// Checks if this is a child NPC using texture or faction.
+        /// </summary>
+        public bool IsChildNPC
+        {
+            get { return IsChildNPCData(Data); }
+        }
+
         #endregion
 
         #region Structs & Enums
@@ -77,6 +85,7 @@ namespace DaggerfallWorkshop.Game
             public int factionID;
             public int nameSeed;
             public Genders gender;
+            public Races race;
             public Context context;
 
             // Derived at runtime
@@ -173,8 +182,9 @@ namespace DaggerfallWorkshop.Game
             data.factionID = factionId;
             data.billboardArchiveIndex = archive;
             data.billboardRecordIndex = record;
-            data.nameSeed = (int)position ^ buildingKey;
+            data.nameSeed = (int)position ^ buildingKey + GameManager.Instance.PlayerGPS.CurrentLocation.LocationIndex;
             data.gender = ((flags & 32) == 32) ? Genders.Female : Genders.Male;
+            data.race = GetRaceFromFaction(factionId);
             data.buildingKey = buildingKey;
         }
 
@@ -198,6 +208,7 @@ namespace DaggerfallWorkshop.Game
             npcData.factionID = factionID;
             npcData.nameSeed = (nameSeed == -1) ? npcData.hash : nameSeed;
             npcData.gender = gender;
+            npcData.race = GetRaceFromFaction(factionID);
             npcData.context = Context.Custom;
         }
 
@@ -283,6 +294,39 @@ namespace DaggerfallWorkshop.Game
         public static int GetPositionHash(int x, int y, int z)
         {
             return x ^ y << 2 ^ z >> 2;
+        }
+
+        /// <summary>
+        /// Check if a known child NPC.
+        /// </summary>
+        /// <returns>True if NPC data matches known children textures or faction.</returns>
+        public static bool IsChildNPCData(NPCData data)
+        {
+            const int childrenFactionID = 514;
+
+            bool isChildNPCTexture = DaggerfallWorkshop.Utility.TextureReader.IsChildNPCTexture(data.billboardArchiveIndex, data.billboardRecordIndex);
+            bool isChildrenFaction = data.factionID == childrenFactionID;
+
+            return isChildNPCTexture || isChildrenFaction;
+        }
+
+        /// <summary>
+        /// Return the race corresponding to a given faction ID.
+        /// </summary>
+        /// <param name="factionId"></param>
+        /// <returns>The faction race if available, otherwise the race of the current region.</returns>
+        public static Races GetRaceFromFaction(int factionId)
+        {
+            if (factionId != 0)
+            {
+                FactionFile.FactionData fd;
+                GameManager.Instance.PlayerEntity.FactionData.GetFactionData(factionId, out fd);
+                Races race = RaceTemplate.GetRaceFromFactionRace((FactionFile.FactionRaces)fd.race);
+                if (race != Races.None)
+                    return race;
+            }
+
+            return GameManager.Instance.PlayerGPS.GetRaceOfCurrentRegion();
         }
 
         #endregion

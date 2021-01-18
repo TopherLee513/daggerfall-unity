@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -35,12 +35,12 @@ namespace DaggerfallWorkshop.Game.Items
 
         private static Dictionary<string, Type> customItems = new Dictionary<string, Type>();
 
-        public static bool RegisterCustomItem(string className, Type guildType)
+        public static bool RegisterCustomItem(string itemClassName, Type itemClassType)
         {
-            DaggerfallUnity.LogMessage("RegisterCustomItem: " + className, true);
-            if (!customItems.ContainsKey(className))
+            DaggerfallUnity.LogMessage("RegisterCustomItem: " + itemClassName, true);
+            if (!customItems.ContainsKey(itemClassName))
             {
-                customItems.Add(className, guildType);
+                customItems.Add(itemClassName, itemClassType);
                 return true;
             }
             return false;
@@ -510,6 +510,27 @@ namespace DaggerfallWorkshop.Game.Items
         }
 
         /// <summary>
+        /// Gets all quest items for a specific quest and item Symbol.
+        /// Ignores ex-quest items that have been made permanent.
+        /// </summary>
+        /// <param name="questUID">Quest UID for item search.</param>
+        /// <param name="itemSymbol">Item Symbol for item search.</param>
+        public DaggerfallUnityItem[] ExportQuestItems(ulong questUID, Symbol itemSymbol)
+        {
+            if (itemSymbol == null)
+                return null;
+
+            List<DaggerfallUnityItem> results = new List<DaggerfallUnityItem>();
+            foreach (DaggerfallUnityItem item in items.Values)
+            {
+                if (item.IsQuestItem && item.QuestUID == questUID && itemSymbol.Equals(item.QuestItemSymbol))
+                    results.Add(item);
+            }
+
+            return results.ToArray();
+        }
+
+        /// <summary>
         /// Serialize items from this collection.
         /// </summary>
         /// <returns>ItemData_v1 array.</returns>
@@ -551,12 +572,12 @@ namespace DaggerfallWorkshop.Game.Items
                     {
                         DaggerfallUnityItem modItem = (DaggerfallUnityItem)Activator.CreateInstance(itemClassType);
                         modItem.FromItemData(itemArray[i]);
-                        AddItem(modItem, AddPosition.DontCare, true);
+                        AddItem(modItem, noStack: true);
                         continue;
                     }
                 }
                 DaggerfallUnityItem item = new DaggerfallUnityItem(itemArray[i]);
-                AddItem(item);
+                AddItem(item, noStack: true);
             }
         }
 
@@ -575,7 +596,7 @@ namespace DaggerfallWorkshop.Game.Items
             {
                 if (templateIndex == -1)
                 {
-                    if (item.GroupIndex == (int)itemGroup)
+                    if (item.ItemGroup == itemGroup)
                     {
                         results.Add(item);
                     }

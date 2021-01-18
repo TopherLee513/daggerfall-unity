@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -14,6 +14,10 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using DaggerfallConnect.Utility;
+using DaggerfallWorkshop;
+using DaggerfallWorkshop.Game;
+using DaggerfallWorkshop.Game.Questing;
+using DaggerfallWorkshop.Utility.AssetInjection;
 #endregion
 
 namespace DaggerfallConnect.Arena2
@@ -52,7 +56,7 @@ namespace DaggerfallConnect.Arena2
             "Wrothgarian Mountains", "Daggerfall", "Glenpoint", "Betony", "Sentinel", "Anticlere", "Lainlyn", "Wayrest",
             "Gen Tem High Rock village", "Gen Rai Hammerfell village", "Orsinium Area", "Skeffington Wood",
             "Hammerfell bay coast", "Hammerfell sea coast", "High Rock bay coast", "High Rock sea coast",
-            "Northmoor", "Menevia", "Alcaire", "Koegria", "Bhoraine", "Kambria", "Phrygias", "Urvaius",
+            "Northmoor", "Menevia", "Alcaire", "Koegria", "Bhoriane", "Kambria", "Phrygias", "Urvaius",
             "Ykalon", "Daenia", "Shalgora", "Abibon-Gora", "Kairou", "Pothago", "Myrkwasa", "Ayasofya",
             "Tigonus", "Kozanset", "Satakalaam", "Totambu", "Mournoth", "Ephesus", "Santaki", "Antiphyllos",
             "Bergama", "Gavaudon", "Tulune", "Glenumbra Moors", "Ilessan Hills", "Cybiades"
@@ -68,6 +72,19 @@ namespace DaggerfallConnect.Arena2
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
             1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0,
             0, 1
+        };
+
+        /// <summary>
+        /// Region temple faction IDs, extracted from FALL.EXE.
+        /// </summary>
+        private static readonly int[] regionTemples = {
+            106,  82,   0,   0,   0,  98,   0,  0,   0,  92,
+              0, 106,   0,   0,   0,  84,  36,  36,  84,  88,
+             82,  88,  98,  92,   0,   0,  82,  0,   0,   0,
+              0,   0,  88,  94,  36,  94, 106, 84, 106, 106,
+             88,  98,  82,  98,  84,  94,  36, 88,  94,  36,
+             98,  84, 106,  88, 106,  88,  92, 84,  98,  88,
+             82,  94
         };
 
         /// <summary>
@@ -235,6 +252,13 @@ namespace DaggerfallConnect.Arena2
         }
 
         /// <summary>
+        /// Gets region temple faction IDs.
+        /// </summary>
+        public static int[] RegionTemples {
+            get { return regionTemples; }
+        }
+
+        /// <summary>
         /// Gets raw MAPS.BSA file.
         /// </summary>
         public BsaFile BsaFile
@@ -330,7 +354,7 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// Gets ID of map pixel.
         /// This can be mapped to location IDs and quest IDs.
-        /// MapTableData.MapId & 0x000fffff = WorldPixelID.
+        /// MapTableData.MapId &amp; 0x000fffff = WorldPixelID.
         /// </summary>
         /// <param name="mapPixelX">Map pixel X.</param>
         /// <param name="mapPixelY">Map pixel Y.</param>
@@ -350,7 +374,7 @@ namespace DaggerfallConnect.Arena2
         /// <summary>
         /// Gets ID of map pixel using latitude and longitude.
         /// This can be mapped to location IDs and quest IDs.
-        /// MapTableData.MapId & 0x000fffff = WorldPixelID.
+        /// MapTableData.MapId &amp; 0x000fffff = WorldPixelID.
         /// </summary>
         /// <param name="longitude">Longitude position.</param>
         /// <param name="latitude">Latitude position.</param>
@@ -699,15 +723,34 @@ namespace DaggerfallConnect.Arena2
             dfLocation.RegionIndex = region;
             dfLocation.LocationIndex = location;
 
-            // Generate smaller dungeon when enabled
-            if (dfLocation.HasDungeon &&
-                DaggerfallWorkshop.DaggerfallUnity.Settings.SmallerDungeons &&
-                !DaggerfallWorkshop.DaggerfallDungeon.IsMainStoryDungeon(dfLocation.MapTableData.MapId))
-            {
+            // Generate smaller dungeon when possible
+            if (UseSmallerDungeon(ref dfLocation))
                 GenerateSmallerDungeon(ref dfLocation);
-            }
 
             return dfLocation;
+        }
+
+        private bool UseSmallerDungeon(ref DFLocation dfLocation)
+        {
+            // Do nothing if location has no dungeon or if a main story dungeon - these are never made smaller
+            if (!dfLocation.HasDungeon || DaggerfallDungeon.IsMainStoryDungeon(dfLocation.MapTableData.MapId))
+                return false;
+
+            // Collect any SiteLinks associated with this dungeon - there should only be one quest assignment per dungeon
+            SiteLink[] siteLinks = QuestMachine.Instance.GetSiteLinks(SiteTypes.Dungeon, dfLocation.MapTableData.MapId);
+            if (siteLinks != null && siteLinks.Length > 0)
+            {
+                // If a SiteLink and related Quest is found then use whatever SmallerDungeons setting as configured at time quest started
+                // Marker assignments are not relocated when user changes SmallerDungeons state so we always use whatever quest compiled with
+                Quest quest = QuestMachine.Instance.GetQuest(siteLinks[0].questUID);
+                if (quest != null && quest.SmallerDungeonsState == QuestSmallerDungeonsState.Enabled)
+                    return true;
+                else if (quest != null && quest.SmallerDungeonsState == QuestSmallerDungeonsState.Disabled)
+                    return false;
+            }
+
+            // If not a main story dungeon and no quest found in dungeon then just use setting as configured
+            return DaggerfallUnity.Settings.SmallerDungeons;
         }
 
         /// <summary>
@@ -835,6 +878,34 @@ namespace DaggerfallConnect.Arena2
             return politicPak.GetValue(mapPixelX, mapPixelY);
         }
 
+        /// <summary>
+        /// Sets climate index from CLIMATE.PAK based on world pixel.
+        /// Allows loaded climate data from Pak file to be modified by mods.
+        /// </summary>
+        /// <param name="mapPixelX">Map pixel X position.</param>
+        /// <param name="mapPixelY">Map pixel Y position.</param>
+        /// <param name="value">The climate to set for the specified map pixel.</param>
+        /// <returns>True if climate index was set, false otherwise.</returns>
+        public bool SetClimateIndex(int mapPixelX, int mapPixelY, Climates value)
+        {
+            mapPixelX += 1;
+            return climatePak.SetValue(mapPixelX, mapPixelY, (byte)value);
+        }
+
+        /// <summary>
+        /// Reads politic index from POLITIC.PAK based on world pixel.
+        /// Allows loaded region data from Pak file to be modified by mods.
+        /// </summary>
+        /// <param name="mapPixelX">Map pixel X position.</param>
+        /// <param name="mapPixelY">Map pixel Y position.</param>
+        /// <param name="value">The politic index to set for the specified map pixel.</param>
+        /// <returns>True if politic index was set, false otherwise.</returns>
+        public bool SetPoliticIndex(int mapPixelX, int mapPixelY, byte value)
+        {
+            mapPixelX += 1;
+            return politicPak.SetValue(mapPixelX, mapPixelY, value);
+        }
+
         #endregion
 
         #region Readers
@@ -866,6 +937,9 @@ namespace DaggerfallConnect.Arena2
                 return false;
             }
 
+            // Add any additional replacement location data to the region, assigning locationIndex
+            WorldDataReplacement.GetDFRegionAdditionalLocationData(region, ref regions[region].DFRegion);
+
             return true;
         }
 
@@ -878,6 +952,10 @@ namespace DaggerfallConnect.Arena2
         /// <returns>True if successful, otherwise false.</returns>
         private bool ReadLocation(int region, int location, ref DFLocation dfLocation)
         {
+            // Check for replacement location data and use it if found
+            if (WorldDataReplacement.GetDFLocationReplacementData(region, location, out dfLocation))
+                return true;
+
             try
             {
                 // Store parent region name
@@ -899,14 +977,13 @@ namespace DaggerfallConnect.Arena2
 
                 // Set loaded flag
                 dfLocation.Loaded = true;
+                return true;
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.Message);
                 return false;
             }
-
-            return true;
         }
 
         /// <summary>
@@ -980,6 +1057,15 @@ namespace DaggerfallConnect.Arena2
             }
         }
 
+        /// <summary>Read location count from maps file, used to get count in
+        /// classic datafiles only, excluding added locations. </summary>
+        private uint ReadLocationCount(int region)
+        {
+            BinaryReader reader = regions[region].MapNames.GetReader();
+            reader.BaseStream.Position = 0;
+            return reader.ReadUInt32();
+        }
+
         /// <summary>
         /// Quickly reads the LocationId with minimal overhead.
         /// Region must be loaded before calling this method.
@@ -989,12 +1075,19 @@ namespace DaggerfallConnect.Arena2
         /// <returns>LocationId.</returns>
         public int ReadLocationIdFast(int region, int location)
         {
+            // Added new locations will put the LocationId in regions map table, since it doesn't exist in classic data
+            if (regions[region].DFRegion.MapTable[location].LocationId != 0)
+                return regions[region].DFRegion.MapTable[location].LocationId;
+
+            // Get datafile location count (excluding added locations)
+            uint locationCount = ReadLocationCount(region);
+
             // Get reader
             BinaryReader reader = regions[region].MapPItem.GetReader();
 
             // Position reader at location record by reading offset and adding to end of offset table
             reader.BaseStream.Position = location * 4;
-            reader.BaseStream.Position = (regions[region].DFRegion.LocationCount * 4) + reader.ReadUInt32();
+            reader.BaseStream.Position = (locationCount * 4) + reader.ReadUInt32();
 
             // Skip doors (+6 bytes per door)
             UInt32 doorCount = reader.ReadUInt32();
@@ -1018,9 +1111,12 @@ namespace DaggerfallConnect.Arena2
         /// <param name="dfLocation">Destination DFLocation.</param>
         private void ReadMapPItem(ref BinaryReader reader, int region, int location, ref DFLocation dfLocation)
         {
+            // Get datafile location count (excluding added locations)
+            uint locationCount = ReadLocationCount(region);
+
             // Position reader at location record by reading offset and adding to end of offset table
             reader.BaseStream.Position = location * 4;
-            reader.BaseStream.Position = (regions[region].DFRegion.LocationCount * 4) + reader.ReadUInt32();
+            reader.BaseStream.Position = (locationCount * 4) + reader.ReadUInt32();
 
             // Store name
             dfLocation.Name = regions[region].DFRegion.MapNames[location];

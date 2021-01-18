@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,6 +11,7 @@
 
 using UnityEngine;
 using System.Collections;
+using DaggerfallWorkshop.Game.UserInterfaceWindows;
 
 namespace DaggerfallWorkshop.Game
 {
@@ -24,7 +25,10 @@ namespace DaggerfallWorkshop.Game
     {
         public int MinWaitTime = 4;             // Min wait time in seconds before next sound
         public int MaxWaitTime = 35;            // Max wait time in seconds before next sound
+        public int CemeteryMinWaitTime = 1;     // Min wait time in seconds before next sound
+        public int CemeteryMaxWaitTime = 80;   // Max wait time in seconds before next sound
         public AmbientSoundPresets Presets;     // Ambient sound preset
+        public bool IsMuted = false;
         public bool doNotPlayInCastle = true;   // Do not play ambient effects in castle blocks
         public bool PlayLightningEffect;        // Play a lightning effect where appropriate
         //public DaggerfallSky SkyForEffects;     // Sky to receive effects
@@ -38,11 +42,24 @@ namespace DaggerfallWorkshop.Game
         //private Coroutine relativePositionCoroutine = null;
 
         SoundClips[] ambientSounds;
+        SoundClips[] cemeteryAmbientSounds = new SoundClips[]
+            {
+                SoundClips.AmbientDistantHowl,
+                SoundClips.AmbientCreepyBirdCall,
+                SoundClips.AmbientCreepyBirdCall
+            };
         AudioClip rainLoop;
         AudioClip cricketsLoop;
+
         float waitTime;
         float waitCounter;
+
+        bool IsCemeteryNearby;
+        float cemeteryWaitTime;
+        float cemeteryWaitCounter;
+
         float waterWaitCounter;
+
         AmbientSoundPresets lastPresets;
         Entity.DaggerfallEntityBehaviour playerBehaviour;
         PlayerEnterExit playerEnterExit;
@@ -68,6 +85,12 @@ namespace DaggerfallWorkshop.Game
             StartWaiting();
             playerBehaviour = GameManager.Instance.PlayerEntityBehaviour;
             playerEnterExit = GameManager.Instance.PlayerEnterExit;
+
+            PlayerGPS.OnEnterLocationRect += PlayerGPS_OnEnterLocationRect;
+            PlayerGPS.OnExitLocationRect += PlayerGPS_OnExitLocationRect;
+
+            DaggerfallVidPlayerWindow.OnVideoStart += AmbientEffectsPlayer_OnVideoStart;
+            DaggerfallVidPlayerWindow.OnVideoEnd += AmbientEffectsPlayer_OnVideoEnd;
         }
 
         void OnDisable()
@@ -84,6 +107,9 @@ namespace DaggerfallWorkshop.Game
 
         void Update()
         {
+            if (IsMuted)
+                return;
+
             // Change sound presets
             if (Presets != lastPresets)
             {
@@ -123,6 +149,16 @@ namespace DaggerfallWorkshop.Game
             {
                 PlayEffects();
                 StartWaiting();
+            }
+
+            if (IsCemeteryNearby && !playerEnterExit.IsPlayerInside)
+            {
+                cemeteryWaitCounter += Time.deltaTime;
+                if (cemeteryWaitCounter > cemeteryWaitTime)
+                {
+                    PlayCemeteryEffects();
+                    StartCemeteryWaiting();
+                }
             }
 
             // Play water sound effects. Timing based on classic.
@@ -269,6 +305,20 @@ namespace DaggerfallWorkshop.Game
             }
         }
 
+        private void PlayCemeteryEffects()
+        {
+            // Do nothing if audio not setup
+            if (ambientAudioSource == null)
+                return;
+
+            // Get next sound index
+            int index = random.Next(0, cemeteryAmbientSounds.Length);
+
+            // Play ambient sound as a one-shot 3D sound
+            SoundClips clip = cemeteryAmbientSounds[index];
+            PlaySomewhereAround(clip, 1f);
+        }
+
         private IEnumerator PlayLightningEffects(int index)
         {
             //Debug.Log(string.Format("Playing index {0}", index));
@@ -353,51 +403,62 @@ namespace DaggerfallWorkshop.Game
             waitCounter = 0;
         }
 
+        private void StartCemeteryWaiting()
+        {
+            // Reset countdown to next sound
+            cemeteryWaitTime = random.Next(CemeteryMinWaitTime, CemeteryMaxWaitTime);
+            cemeteryWaitCounter = 0;
+        }
+
         private void ApplyPresets()
         {
-            if (Presets == AmbientSoundPresets.Dungeon)
+            switch (Presets)
             {
-                // Set dungeon one-shots
-                ambientSounds = new SoundClips[] {
-                    SoundClips.AmbientDripShort,
-                    SoundClips.AmbientDripLong,
-                    SoundClips.AmbientWindMoan,
-                    SoundClips.AmbientWindMoanDeep,
-                    SoundClips.AmbientDoorOpen,
-                    SoundClips.AmbientGrind,
-                    SoundClips.AmbientStrumming,
-                    SoundClips.AmbientWindBlow1,
-                    SoundClips.AmbientWindBlow1a,
-                    SoundClips.AmbientWindBlow1b,
-                    SoundClips.AmbientMonsterRoar,
-                    SoundClips.AmbientGoldPieces,
-                    SoundClips.AmbientBirdCall,
-                    SoundClips.AmbientDoorClose,
-                };
-                AmbientInteriorPresets();
-            }
-            else if (Presets == AmbientSoundPresets.Storm)
-            {
-                // Set storm one-shots
-                ambientSounds = new SoundClips[] {
-                    SoundClips.StormLightningShort,
-                    SoundClips.StormLightningThunder,
-                    SoundClips.StormThunderRoll,
-                };
-                AmbientExteriorPresets();
-            }
-            else if (Presets == AmbientSoundPresets.SunnyDay)
-            {
-                ambientSounds = new SoundClips[]
-                {
-                    SoundClips.BirdCall1,
-                    SoundClips.BirdCall2,
-                };
-                AmbientExteriorPresets();
-            }
-            else
-            {
-                ambientSounds = null;
+                case AmbientSoundPresets.Dungeon:
+                    // Set dungeon one-shots
+                    ambientSounds = new SoundClips[] {
+                        SoundClips.AmbientDripShort,
+                        SoundClips.AmbientDripLong,
+                        SoundClips.AmbientWindMoan,
+                        SoundClips.AmbientWindMoanDeep,
+                        SoundClips.AmbientDoorOpen,
+                        SoundClips.AmbientGrind,
+                        SoundClips.AmbientStrumming,
+                        SoundClips.AmbientWindBlow1,
+                        SoundClips.AmbientWindBlow1a,
+                        SoundClips.AmbientWindBlow1b,
+                        SoundClips.AmbientMonsterRoar,
+                        SoundClips.AmbientGoldPieces,
+                        SoundClips.AmbientBirdCall,
+                        SoundClips.AmbientDoorClose,
+                    };
+                    AmbientInteriorPresets();
+                    break;
+
+                case AmbientSoundPresets.Storm:
+                    // Set storm one-shots
+                    ambientSounds = new SoundClips[] {
+                        SoundClips.StormLightningShort,
+                        SoundClips.StormLightningThunder,
+                        SoundClips.StormThunderRoll,
+                    };
+                    AmbientExteriorPresets();
+                    break;
+
+                case AmbientSoundPresets.SunnyDay:
+                    ambientSounds = new SoundClips[]
+                    {
+                        SoundClips.BirdCall1,
+                        SoundClips.BirdCall2,
+                    };
+                    AmbientExteriorPresets();
+                    break;
+
+                case AmbientSoundPresets.ClearNight:
+                case AmbientSoundPresets.Rain:
+                case AmbientSoundPresets.None:
+                    ambientSounds = null;
+                    break;
             }
 
             lastPresets = Presets;
@@ -452,6 +513,44 @@ namespace DaggerfallWorkshop.Game
             AmbientEffectsEventArgs args = new AmbientEffectsEventArgs(clip);
             if (OnPlayEffect != null)
                 OnPlayEffect(args);
+        }
+
+        void PlayerGPS_OnEnterLocationRect(DaggerfallConnect.DFLocation location)
+        {
+            IsCemeteryNearby = false;
+            bool isPlayerInside = playerEnterExit.IsPlayerInside;
+
+            if (!isPlayerInside)
+            {
+                IsCemeteryNearby = (location.MapTableData.LocationType == DaggerfallConnect.DFRegion.LocationTypes.Graveyard);
+                if (IsCemeteryNearby)
+                    StartCemeteryWaiting();
+            }
+        }
+
+        void PlayerGPS_OnExitLocationRect()
+        {
+            IsCemeteryNearby = false;
+        }
+
+        private void AmbientEffectsPlayer_OnVideoStart()
+        {
+            rainLoop = null;
+            cricketsLoop = null;
+
+            // Stop playing any loops
+            if (loopAudioSource.isPlaying)
+            {
+                loopAudioSource.Stop();
+                loopAudioSource.clip = null;
+                loopAudioSource.loop = false;
+            }
+            IsMuted = true;
+        }
+
+        private void AmbientEffectsPlayer_OnVideoEnd()
+        {
+            IsMuted = false;
         }
 
         #endregion

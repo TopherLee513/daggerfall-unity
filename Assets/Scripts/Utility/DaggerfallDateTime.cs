@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -343,6 +343,10 @@ namespace DaggerfallWorkshop.Utility
         /// <param name="seconds">Amount in seconds to raise time values.</param>
         public void RaiseTime(float seconds)
         {
+            if (seconds < 0f)
+            {
+                throw new InvalidOperationException(string.Format("Time increases should always be positive. Got {0}", seconds));
+            }
             // Increment seconds by any amount
             Second += seconds;
 
@@ -674,7 +678,7 @@ namespace DaggerfallWorkshop.Utility
             int offset = (isMasser) ? 3 : -1;
 
             // Find the lunar phase for current day
-            int moonRatio = (Day + offset) % 32;
+            int moonRatio = (DayOfYear + Year * MonthsPerYear * DaysPerMonth + offset) % 32;
             LunarPhases phase = LunarPhases.None;
             if (moonRatio == 0)
                 phase = LunarPhases.Full;

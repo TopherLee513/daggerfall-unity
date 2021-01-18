@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -34,6 +34,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         Vector2 size;
         Vector2 rootSize;
         bool useFocus = false;
+        bool overridesHotkeySequences = false;
 
         ToolTip toolTip = null;
         string toolTipText = string.Empty;
@@ -86,6 +87,9 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
         float minAutoScale = 0;
         float maxAutoScale = 0;
+
+        public delegate void OnKeyboardEventHandler(BaseScreenComponent sender, Event keyboardEvent);
+        public event OnKeyboardEventHandler OnKeyboardEvent;
 
         public delegate void OnMouseEnterHandler(BaseScreenComponent sender);
         public event OnMouseEnterHandler OnMouseEnter;
@@ -175,6 +179,16 @@ namespace DaggerfallWorkshop.Game.UserInterface
         }
 
         /// <summary>
+        /// Gets or sets flag to make control bypass hotkeys.
+        /// When enabled, hotkeys will not be interpreted while this control has focus.
+        /// </summary>
+        public bool OverridesHotkeySequences
+        {
+            get { return overridesHotkeySequences; }
+            set { overridesHotkeySequences = value; }
+        }
+
+        /// <summary>
         /// Gets or sets name.
         /// </summary>
         public string Name
@@ -198,7 +212,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         public virtual Vector2 Position
         {
             get { return position; }
-            internal set { position = value; }
+            set { position = value; }
         }
 
         /// <summary>
@@ -207,7 +221,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         public virtual Vector2 Size
         {
             get { return size; }
-            internal set { size = value; }
+            set { size = value; }
         }
 
         /// <summary>
@@ -556,7 +570,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
             else
             {
                 // Update raw mouse screen position from Input - must invert mouse position Y as Unity 0,0 is bottom-left
-                mousePosition = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+                mousePosition = new Vector2(InputManager.Instance.MousePosition.x, Screen.height - InputManager.Instance.MousePosition.y);
             }
             scaledMousePosition = -Vector2.one;
 
@@ -609,14 +623,14 @@ namespace DaggerfallWorkshop.Game.UserInterface
             }
 
             // Get left and right mouse down for general click handling and double-click sampling
-            bool leftMouseDown = Input.GetMouseButtonDown(0);
-            bool rightMouseDown = Input.GetMouseButtonDown(1);
-            bool middleMouseDown = Input.GetMouseButtonDown(2);
+            bool leftMouseDown = InputManager.Instance.GetMouseButtonDown(0);
+            bool rightMouseDown = InputManager.Instance.GetMouseButtonDown(1);
+            bool middleMouseDown = InputManager.Instance.GetMouseButtonDown(2);
 
             // Get left and right mouse down for up/down events
-            bool leftMouseHeldDown = Input.GetMouseButton(0);
-            bool rightMouseHeldDown = Input.GetMouseButton(1);
-            bool middleMouseHeldDown = Input.GetMouseButton(2);
+            bool leftMouseHeldDown = InputManager.Instance.GetMouseButton(0);
+            bool rightMouseHeldDown = InputManager.Instance.GetMouseButton(1);
+            bool middleMouseHeldDown = InputManager.Instance.GetMouseButton(2);
 
             // Handle left mouse down/up events
             // Can only trigger mouse down while over component but can release from anywhere
@@ -874,6 +888,20 @@ namespace DaggerfallWorkshop.Game.UserInterface
         #endregion
 
         #region Protected Methods
+
+        /// <summary>
+        /// KeyDown or KeyUp events that matches hotkey sequence
+        /// Returns whether the event could be delivered
+        /// </summary>
+        protected virtual bool KeyboardEvent(Event keyboardEvent)
+        {
+            if (OnKeyboardEvent != null)
+            {
+                OnKeyboardEvent(this, keyboardEvent);
+                return true;
+            }
+            return false;
+        }
 
         /// <summary>
         /// Mouse clicked inside control area.

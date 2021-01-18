@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -233,7 +233,8 @@ namespace DaggerfallConnect.Save
 
                     // Parse MAPSAVE data for discovered locations
                     DFRegion regionData = DaggerfallUnity.Instance.ContentReader.MapFileReader.GetRegion(regionIndex);
-                    for (int i = 0; i < regionData.LocationCount; i++)
+                    int locationCount = Math.Min(data.Length, (int)regionData.LocationCount);
+                    for (int i = 0; i < locationCount; i++)
                     {
                         // If a location is marked as discovered in classic but not DF Unity, discover it for DF Unity
                         if ((data[i] & 0x40) != 0 && !regionData.MapTable[i].Discovered)

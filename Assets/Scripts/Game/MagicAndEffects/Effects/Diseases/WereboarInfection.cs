@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -9,7 +9,7 @@
 // Notes:
 //
 
-using System;
+using DaggerfallConnect.Arena2;
 
 namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 {
@@ -28,6 +28,8 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             properties.Key = WereboarInfectionKey;
             InfectionType = LycanthropyTypes.Wereboar;
         }
+
+        public override TextFile.Token[] ContractedMessageTokens => null;
 
         protected override void DeployFullBlownLycanthropy()
         {

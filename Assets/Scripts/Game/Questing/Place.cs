@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -207,7 +207,7 @@ namespace DaggerfallWorkshop.Game.Questing
                     // Get a remote site in same region quest was issued
                     SetupRemoteSite(line);
                 }
-                else if (scope == Scopes.Fixed && p1 > 0x4500)
+                else if (scope == Scopes.Fixed && p1 > 0x300)
                 {
                     // Get a fixed site, such as a capital city or dungeon
                     SetupFixedLocation();
@@ -217,8 +217,6 @@ namespace DaggerfallWorkshop.Game.Questing
                     throw new Exception("Invalid placeType in line: " + line);
                 }
 
-                // add conversation topics from anyInfo command tag
-                AddConversationTopics();
             }
         }
 
@@ -329,15 +327,47 @@ namespace DaggerfallWorkshop.Game.Questing
         /// </summary>
         /// <param name="resource">Incoming resource type about to be added.</param>
         /// <param name="markerIndex">Static index to use. Must be able to find preferred marker type. Used by main quest only.</param>
-        QuestMarker GetSiteMarker(QuestResource resource, int markerIndex = -1)
+        /// <param name="markerPreference">Marker preference when using static index.</param>
+        bool GetSiteMarker(QuestResource resource, int markerIndex = -1, MarkerPreference markerIndexPreference = MarkerPreference.Default)
         {
-            // Direct to previously selected marker
+            // Direct to previously selected marker, unless specific index specified
             if (siteDetails.selectedMarker.targetResources != null)
-                return siteDetails.selectedMarker;
+            {
+                if (markerIndex > -1)
+                {
+                    // Specific index specified and already got the main selected marker, so just assign directly to marker list
+                    if (resource is Person || resource is Foe || markerIndexPreference == MarkerPreference.UseQuestMarker)
+                        AssignResourceToMarker(resource.Symbol.Clone(), ref siteDetails.questSpawnMarkers[markerIndex]);
+                    else if (resource is Item)
+                        AssignResourceToMarker(resource.Symbol.Clone(), ref siteDetails.questItemMarkers[markerIndex]);
+                    return false;
+                }
+                return true;
+            }
+
+            // Handle "anymarker" preference
+            if (markerIndexPreference == MarkerPreference.AnyMarker)
+            {
+                // Create a combined list of all markers
+                List<QuestMarker> allMarkers = new List<QuestMarker>();
+                allMarkers.AddRange(siteDetails.questSpawnMarkers);
+                allMarkers.AddRange(siteDetails.questItemMarkers);
+
+                // Select a random marker from combined list
+                if (allMarkers.Count > 0)
+                {
+                    siteDetails.selectedMarker = allMarkers[UnityEngine.Random.Range(0, allMarkers.Count)];
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
 
             // Determine preferred marker type for this resource
             MarkerTypes preferredMarkerType = MarkerTypes.None;
-            if (resource is Person || resource is Foe)
+            if (resource is Person || resource is Foe || markerIndexPreference == MarkerPreference.UseQuestMarker)
                 preferredMarkerType = MarkerTypes.QuestSpawn;
             else if (resource is Item)
                 preferredMarkerType = MarkerTypes.QuestItem;
@@ -374,7 +404,7 @@ namespace DaggerfallWorkshop.Game.Questing
                 siteDetails.selectedMarker = siteDetails.questItemMarkers[UnityEngine.Random.Range(0, siteDetails.questItemMarkers.Length)];
             }
 
-            return siteDetails.selectedMarker;
+            return true;
         }
 
         /// <summary>
@@ -384,7 +414,7 @@ namespace DaggerfallWorkshop.Game.Questing
         /// </summary>
         /// <param name="targetSymbol">Resource symbol of Person, Item, or Foe to assign.</param>
         /// <param name="markerIndex">Preferred marker index to use instead of random. Must be able to find preferred marker type. Used by main quest only.</param>
-        public void AssignQuestResource(Symbol targetSymbol, int markerIndex = -1, bool cullExisting = true)
+        public void AssignQuestResource(Symbol targetSymbol, int markerIndex = -1, MarkerPreference markerIndexPreference = MarkerPreference.Default, bool cullExisting = true)
         {
             // Site must have at least one marker available
             if (!ValidateQuestMarkers(siteDetails.questSpawnMarkers, siteDetails.questItemMarkers))
@@ -402,11 +432,15 @@ namespace DaggerfallWorkshop.Game.Questing
                 QuestMachine.Instance.CullResourceTarget(resource, Symbol);
 
             // Get marker for new resource and assign resource to marker
-            QuestMarker selectedMarker = GetSiteMarker(resource, markerIndex);
-            AssignResourceToMarker(targetSymbol.Clone(), ref siteDetails.selectedMarker);
+            if (GetSiteMarker(resource, markerIndex, markerIndexPreference))
+                AssignResourceToMarker(targetSymbol.Clone(), ref siteDetails.selectedMarker);
 
             // Output debug information
-            if (resource is Person)
+            if (markerIndexPreference == MarkerPreference.AnyMarker)
+            {
+                Debug.LogFormat("Assigned resource {0} to random quest or item marker", resource.Symbol.Name);
+            }
+            else if (resource is Person)
             {
                 if (siteDetails.siteType == SiteTypes.Building)
                     Debug.LogFormat("Assigned Person {0} to Building {1}", (resource as Person).DisplayName, SiteDetails.buildingName);
@@ -528,7 +562,7 @@ namespace DaggerfallWorkshop.Game.Questing
                             previousMarkerIndex = siteDetails.selectedQuestItemMarker;
 
                         // Reassign to same marker
-                        AssignQuestResource(symbol, previousMarkerIndex, false);
+                        AssignQuestResource(symbol, previousMarkerIndex, MarkerPreference.Default, false);
                         Debug.LogFormat("Reassigned resource {0} to new marker system.", symbol.Original);
                     }
                 }
@@ -831,6 +865,7 @@ namespace DaggerfallWorkshop.Game.Questing
         {
             // Attempt to get locationId by p1 - try p1 first then p1-1
             // This should work out dungeon or exterior loctionId as needed
+            int buildingKey = 0;
             SiteTypes siteType;
             DFLocation location;
             if (!DaggerfallUnity.Instance.ContentReader.GetQuestLocation(p1, out location))
@@ -841,10 +876,14 @@ namespace DaggerfallWorkshop.Game.Questing
                     // p1 is a completely unknown locationId
                     throw new Exception(string.Format("Could not find locationId from p1 using: '{0}' or '{1}'", p1, p1 - 1));
                 }
-                else
+                else if (location.HasDungeon == true)
                 {
                     // If p1-1 resolves then dungeon is referenced
                     siteType = SiteTypes.Dungeon;
+                }
+                else
+                {
+                    siteType = SiteTypes.Building;
                 }
             }
             else if (p1 == 50000)
@@ -878,6 +917,34 @@ namespace DaggerfallWorkshop.Game.Questing
                         throw new Exception(string.Format("Could not find any quest markers in random dungeon {0}", location.Name));
                 }
             }
+            else if (siteType == SiteTypes.Building)
+            {
+                foreach (DFLocation.BuildingData locBuilding in location.Exterior.Buildings)
+                {
+                    if (locBuilding.LocationId == p1)
+                    {
+                        string blockName = location.Exterior.ExteriorData.BlockNames[locBuilding.Sector];
+                        DFBlock blockData;
+                        if (DaggerfallUnity.Instance.ContentReader.GetBlock(blockName, out blockData))
+                        {
+                            int width = location.Exterior.ExteriorData.Width;
+                            int x = locBuilding.Sector % width;
+                            int y = locBuilding.Sector / width;
+                            for (int recordIndex = 0; recordIndex < blockData.RmbBlock.FldHeader.BuildingDataList.Length; recordIndex++)
+                            {
+                                DFLocation.BuildingData building = blockData.RmbBlock.FldHeader.BuildingDataList[recordIndex];
+                                if (building.LocationId == locBuilding.LocationId)
+                                {
+                                    // Enumerate markers and calculate building key
+                                    EnumerateBuildingQuestMarkers(blockData, recordIndex, out questSpawnMarkers, out questItemMarkers);
+                                    buildingKey = BuildingDirectory.MakeBuildingKey((byte)x, (byte)y, (byte)recordIndex);
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
 
             // Configure magic number index for fixed dungeons
             int magicNumberIndex = 0;
@@ -899,6 +966,7 @@ namespace DaggerfallWorkshop.Game.Questing
             siteDetails.locationId = location.Exterior.ExteriorData.LocationId;
             siteDetails.regionName = location.RegionName;
             siteDetails.locationName = location.Name;
+            siteDetails.buildingKey = buildingKey;
             siteDetails.questSpawnMarkers = questSpawnMarkers;
             siteDetails.questItemMarkers = questItemMarkers;
             siteDetails.magicNumberIndex = magicNumberIndex;
@@ -1107,7 +1175,7 @@ namespace DaggerfallWorkshop.Game.Questing
                 // Generate a random surname for this residence
                 //DFRandom.srand(Time.renderedFrameCount);
                 string surname = DaggerfallUnity.Instance.NameHelper.Surname(Utility.NameHelper.BankTypes.Breton);
-                buildingName = HardStrings.theNamedResidence.Replace("%s", surname);
+                buildingName = TextManager.Instance.GetLocalizedText("theNamedResidence").Replace("%s", surname);
             }
             else
             {
@@ -1233,43 +1301,6 @@ namespace DaggerfallWorkshop.Game.Questing
             return foundLocationIndices.ToArray();
         }
 
-        void AddConversationTopics()
-        {
-            List<TextFile.Token[]> anyInfoAnswers = null;
-            List<TextFile.Token[]> anyRumorsAnswers = null;
-            if (this.InfoMessageID != -1)
-            {
-                Message message = this.ParentQuest.GetMessage(this.InfoMessageID);
-                anyInfoAnswers = new List<TextFile.Token[]>();                
-                if (message != null)
-                {
-                    for (int i = 0; i < message.VariantCount; i++)
-                    {
-                        TextFile.Token[] tokens = message.GetTextTokensByVariant(i, false); // do not expand macros here (they will be expanded just in time by TalkManager class)
-                        anyInfoAnswers.Add(tokens);
-                    }
-                }
-
-                message = this.ParentQuest.GetMessage(this.RumorsMessageID);
-                anyRumorsAnswers = new List<TextFile.Token[]>();
-                if (message != null)
-                {                    
-                    for (int i = 0; i < message.VariantCount; i++)
-                    {
-                        TextFile.Token[] tokens = message.GetTextTokensByVariant(i, false); // do not expand macros here (they will be expanded just in time by TalkManager class)
-                        anyRumorsAnswers.Add(tokens);
-                    }
-                }
-            }
-
-            string captionString;
-            this.ExpandMacro(MacroTypes.NameMacro1, out captionString); // first try to resolve building name (if this fails it is a dungeon...)
-            if (captionString == null) // if building name resolving failed
-                this.ExpandMacro(MacroTypes.NameMacro3, out captionString); // resolve dungeon name
-            string key = this.Symbol.Name;
-            GameManager.Instance.TalkManager.AddQuestTopicWithInfoAndRumors(this.ParentQuest.UID, this, key, TalkManager.QuestInfoResourceType.Location, anyInfoAnswers, anyRumorsAnswers);
-        }
-
         #endregion
 
         #region Quest Markers
@@ -1367,6 +1398,15 @@ namespace DaggerfallWorkshop.Game.Questing
             {
                 // Get block data
                 DFBlock blockData = DaggerfallUnity.Instance.ContentReader.BlockFileReader.GetBlock(dungeonBlock.BlockName);
+
+                // Skip misplaced overlapping N block at -1,-1 in Orsinium
+                // This must be a B block to close out dungeon on that edge, not an N block which opens dungeon to void
+                // DaggerfallDungeon skips this N block during layout, so prevent it being available to quest system
+                if (location.MapTableData.MapId == 19021260 &&
+                    dungeonBlock.X == -1 && dungeonBlock.Z == -1 && dungeonBlock.BlockName == "N0000065.RDB")
+                {
+                    continue;
+                }
 
                 // Iterate all groups
                 foreach (DFBlock.RdbObjectRoot group in blockData.RdbBlock.ObjectRootList)

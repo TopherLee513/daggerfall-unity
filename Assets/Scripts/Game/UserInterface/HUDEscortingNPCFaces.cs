@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -16,6 +16,7 @@ using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game.Questing;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Utility;
+using DaggerfallWorkshop.Utility;
 
 namespace DaggerfallWorkshop.Game.UserInterface
 {
@@ -31,6 +32,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         const int maxFaces = 3;
         const string factionFaceFile = "FACES.CIF";
         const string factionChildrenFaceFile = "KIDS00I0.CIF";
+        const string factionExtraFaceFile = "TFAC00I0.RCI";
 
         List<FaceDetails> faces = new List<FaceDetails>();
         List<Panel> facePanels = new List<Panel>();
@@ -116,7 +118,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         /// <param name="person">Target Person resource to remove.</param>
         public void DropFace(Person person)
         {
-            faces.Remove(CreateFaceDetails(person));
+            faces.RemoveAll(face => face.questUID == person.ParentQuest.UID && person.Symbol.Equals(face.targetPerson));
             RefreshFaces();
         }
 
@@ -126,7 +128,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         /// <param name="foe">Target Foe resource to remove.</param>
         public void DropFace(Foe foe)
         {
-            faces.Remove(CreateFaceDetails(foe));
+            faces.RemoveAll(face => face.questUID == foe.ParentQuest.UID && foe.Symbol.Equals(face.targetFoe));
             RefreshFaces();
         }
 
@@ -223,30 +225,40 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 // Get image for this face
                 Texture2D faceTexture = null;
                 Panel facePanel = new Panel();
+                // Disable until placed
+                facePanel.Enabled = false;
                 if (face.factionFaceIndex >= 0 && face.factionFaceIndex <= 60)
                 {
                     // Use special NPC face set at time face data was added
                     faceTexture = DaggerfallUI.GetTextureFromCifRci(factionFaceFile, face.factionFaceIndex);
                     facePanel.Size = new Vector2(specialFacePanelWidth, specialFacePanelHeight);
                 }
+                else if (face.factionFaceIndex > 60 && face.factionFaceIndex <= 502)
+                {
+                    // Use special NPC face set by a mod at time face data was added
+                    faceTexture = DaggerfallUI.GetTextureFromCifRci(factionExtraFaceFile, face.factionFaceIndex);
+                    facePanel.Size = new Vector2(specialFacePanelWidth, specialFacePanelHeight);
+                }
                 else
                 {
+                    string fileName;
+
                     // Use generic NPC face
                     if (!face.isChild)
                     {
                         // Get a racial portrait
-                        if (face.gender == Genders.Male)
-                            faceTexture = DaggerfallUI.GetTextureFromCifRci(raceTemplate.PaperDollHeadsMale, face.faceIndex);
-                        else if (face.gender == Genders.Female)
-                            faceTexture = DaggerfallUI.GetTextureFromCifRci(raceTemplate.PaperDollHeadsFemale, face.faceIndex);
+                        fileName = face.gender == Genders.Male ? raceTemplate.PaperDollHeadsMale : raceTemplate.PaperDollHeadsFemale;
                     }
                     else
                     {
                         // Get a child portrait
-                        faceTexture = DaggerfallUI.GetTextureFromCifRci(factionChildrenFaceFile, face.faceIndex);
+                        fileName = factionChildrenFaceFile;
                     }
 
-                    facePanel.Size = new Vector2(faceTexture.width, faceTexture.height);
+                    // Allow individual factions from mods to use normal race faces
+                    ImageData imageData = ImageReader.GetImageData(fileName, face.faceIndex, 0, true, true);
+                    faceTexture = imageData.texture;
+                    facePanel.Size = new Vector2(imageData.width, imageData.height);
                 }
 
                 // Must have a texture by now
@@ -286,15 +298,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 return;
 
             // Remove any faces belonging to this quest
-            FaceDetails[] faceArray = faces.ToArray();
-            for (int i = 0; i < faceArray.Length; i++)
-            {
-                // Remove from list if face belongs to ending quest
-                if (faceArray[i].questUID == quest.UID)
-                {
-                    faces.Remove(faceArray[i]);
-                }
-            }
+            faces.RemoveAll(face => face.questUID == quest.UID);
 
             RefreshFaces();
         }

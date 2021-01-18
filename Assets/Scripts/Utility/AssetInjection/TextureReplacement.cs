@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -83,7 +83,6 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
     /// </summary>
     public static class TextureReplacement
     {
-
         #region Fields
 
         const string extension = ".png";
@@ -308,7 +307,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
                 // If the first match is a texture array, is returned successfully.
                 // If the first match is the first texture in the archive, an array is created at runtime.
                 Texture texture;
-                if (ModManager.Instance.TryGetAsset(names, false, out texture) && texture.dimension == TextureDimension.Tex2DArray)
+                if (ModManager.Instance.TryGetAsset(names, null, out texture) && texture.dimension == TextureDimension.Tex2DArray)
                 {
                     if ((textureArray = texture as Texture2DArray).depth == depth)
                         return true;
@@ -603,11 +602,13 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
         }
 
         /// <summary>
-        /// Import custom texture and label settings for buttons
+        /// Import custom texture and label settings for buttons.
+        /// This feature has been deprecated in favor of <see cref="DaggerfallWorkshop.Game.UserInterfaceWindows.UIWindowFactory"/>.
         /// </summary>
         /// <param name="button">Button</param>
         /// <param name="colorName">Name of texture</param>
-        static public bool TryCustomizeButton(ref Button button, string colorName)
+        [Obsolete("This feature has been deprecated in favor of UIWindowFactory.")]
+        public static bool TryCustomizeButton(ref Button button, string colorName)
         {
             Texture2D tex;
             if (!TryImportTexture(colorName, true, out tex))
@@ -631,6 +632,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
                 }
             }
 
+            LogLegacyUICustomizationMessage(colorName);
             return true;
         }
 
@@ -668,7 +670,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
         /// <returns>The name for the texture array with requested options.</returns>
         public static string GetNameTexArray(int archive, TextureMap textureMap = TextureMap.Albedo)
         {
-            string name = string.Format("{0}-TexArray", archive);
+            string name = string.Format("{0:000}-TexArray", archive);
 
             if (textureMap != TextureMap.Albedo)
                 name = string.Format("{0}_{1}", name, textureMap);
@@ -850,9 +852,24 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
                 rect = xml.GetRect("rect", rect, paperdollScale);
         }
 
+        /// <summary>
+        /// Parses the ID from the name of a texture archive from classic Daggerfall.
+        /// </summary>
+        /// <param name="filename">A name with format <c>"TEXTURE.XXX"</c>.</param>
+        /// <returns>The number parsed from <c>"XXX"</c>.</returns>
+        /// <seealso cref="TextureFile.IndexToFileName(int)"/>
         public static int FileNameToArchive(string filename)
         {
             return int.Parse(filename.Substring("TEXTURE.".Length));
+        }
+
+        #endregion
+
+        #region  Internal Methods
+
+        internal static void LogLegacyUICustomizationMessage(string textureName)
+        {
+            Debug.LogWarningFormat("Imported texture {0} for legacy support of UI customization. This feature has been deprecated in favor of UIWindowFactory.", textureName);
         }
 
         #endregion
@@ -871,7 +888,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             {
                 // Seek from mods
                 if (ModManager.Instance != null)
-                    return ModManager.Instance.TryGetAsset(name, false, out material);
+                    return ModManager.Instance.TryGetAsset(name, null, out material);
             }
 
             material = null;
@@ -899,8 +916,13 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
                     return true;
 
                 // Seek from mods
-                if (ModManager.Instance != null)
-                    return ModManager.Instance.TryGetAsset(name, false, out tex);
+                if (ModManager.Instance && ModManager.Instance.TryGetAsset(name, null, out tex))
+                {
+                    if (!readOnly && !tex.isReadable)
+                        Debug.LogWarning($"Texture {name} is not readable.");
+
+                    return true;
+                }
             }
 
             tex = null;

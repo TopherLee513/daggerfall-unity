@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -24,6 +24,7 @@ using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Items;
 using DaggerfallWorkshop.Game.Utility;
+using DaggerfallWorkshop.Game.Utility.ModSupport;
 
 namespace DaggerfallWorkshop
 {
@@ -54,6 +55,7 @@ namespace DaggerfallWorkshop
         ItemHelper itemHelper;
         NameHelper nameHelper;
         ITerrainSampler terrainSampler = new DefaultTerrainSampler();
+        ITerrainTexturing terrainTexturing = new DefaultTerrainTexturing();
         ITextProvider textProvider = new DefaultTextProvider();
 
         const ulong startingUID = 0x2000000;
@@ -181,6 +183,12 @@ namespace DaggerfallWorkshop
         {
             get { return terrainSampler; }
             set { terrainSampler = value; }
+        }
+
+        public ITerrainTexturing TerrainTexturing
+        {
+            get { return terrainTexturing; }
+            set { terrainTexturing = value; }
         }
 
         public ITextProvider TextProvider
@@ -465,6 +473,29 @@ namespace DaggerfallWorkshop
 
         #endregion
 
+        #region Internal Methods
+
+        /// <summary>
+        /// Removes from cache all assets that have not been accessed from the time in minutes defined by
+        /// <see cref="SettingsManager.AssetCacheThreshold"/>. If equals to <c>0</c> assets are never removed from cache.
+        /// </summary>
+        internal void PruneCache()
+        {
+            if (Settings.AssetCacheThreshold == 0)
+                return;
+
+            float time = Time.realtimeSinceStartup;
+            float threshold = Settings.AssetCacheThreshold * 60;
+
+            MaterialReader.PruneCache(time, threshold);
+            if (ModManager.Instance)
+                ModManager.Instance.PruneCache(time, threshold);
+
+            RaiseOnPruneCacheEvent(time, threshold);
+        }
+
+        #endregion
+
         #region Private Methods
 
         private void SetupSingleton()
@@ -519,6 +550,14 @@ namespace DaggerfallWorkshop
         {
             if (OnSetTextProvider != null)
                 OnSetTextProvider();
+        }
+
+        public delegate void OnPruneCacheEventHandler(float time, float threshold);
+        public event OnPruneCacheEventHandler OnPruneCache;
+        private void RaiseOnPruneCacheEvent(float time, float threshold)
+        {
+            if (OnPruneCache != null)
+                OnPruneCache(time, threshold);
         }
 
         #endregion

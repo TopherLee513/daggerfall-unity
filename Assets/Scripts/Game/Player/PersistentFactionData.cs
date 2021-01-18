@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -595,13 +595,20 @@ namespace DaggerfallWorkshop.Game.Player
         }
 
         /// <summary>
-        /// Get faction2 relation to faction1. Returns 1 if faction2 is the parent of faction1, 2 if faction1 and faction2 share the same parent
-        /// 3 if faction2 is a child of faction1, and 0 if none of the above.
+        /// Get faction2 relation to faction1. Returns:
+        ///    -1 if factions are unrelated
+        ///     0 if factions are the same
+        ///     1 if faction2 is the parent of faction1
+        ///     2 if faction1 and faction2 share the same parent
+        ///     3 if faction2 is a child of faction1
         /// </summary>
         public int GetFaction2ARelationToFaction1(int factionID1, int factionID2)
         {
             if (factionDict.ContainsKey(factionID1) && factionDict.ContainsKey(factionID2))
             {
+                if (factionID1 == factionID2)
+                    return 0;
+
                 FactionFile.FactionData factionData1 = factionDict[factionID1];
 
                 if (factionData1.parent == factionID2)
@@ -618,7 +625,7 @@ namespace DaggerfallWorkshop.Game.Player
                     return 3;
             }
 
-            return 0;
+            return -1;
         }
 
 
@@ -798,6 +805,27 @@ namespace DaggerfallWorkshop.Game.Player
             }
 
             return false;
+        }
+
+        #endregion
+
+        #region Parent Group
+
+        /// <summary>
+        /// Find the top-level parent group of a given faction. This parent can be a Group, a Province or a Temple.
+        /// </summary>
+        /// <param name="faction">The faction to get the parent of.</param>
+        /// <param name="parentFaction">The parent group faction.</param>
+        public void GetParentGroupFaction(FactionFile.FactionData faction, out FactionFile.FactionData parentFaction)
+        {
+            parentFaction = faction;
+            while (parentFaction.parent != 0 &&
+                   parentFaction.type != (int)FactionFile.FactionTypes.Group &&
+                   parentFaction.type != (int)FactionFile.FactionTypes.Province &&
+                   parentFaction.type != (int)FactionFile.FactionTypes.Temple)
+            {
+                GameManager.Instance.PlayerEntity.FactionData.GetFactionData(parentFaction.parent, out parentFaction);
+            }
         }
 
         #endregion

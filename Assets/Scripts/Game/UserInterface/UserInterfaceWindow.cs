@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -10,10 +10,6 @@
 //
 
 using UnityEngine;
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Text;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
 
 namespace DaggerfallWorkshop.Game.UserInterface
@@ -29,6 +25,9 @@ namespace DaggerfallWorkshop.Game.UserInterface
         void Update();
         void Draw();
         void ProcessMessages();
+        void OnPush();
+        void OnPop();
+        void OnReturn();
     }
 
     /// <summary>
@@ -129,7 +128,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         {
             uiManager.PopWindow();
             RaiseOnCloseHandler();
-            Resources.UnloadUnusedAssets();
+            DaggerfallGC.ThrottledUnloadUnusedAssets();
         }
 
         public void PopWindow()

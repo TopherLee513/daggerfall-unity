@@ -1,11 +1,12 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Hazelnut
 
 using UnityEngine;
+using System.Collections;
 using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallConnect.Arena2;
@@ -60,6 +61,7 @@ namespace DaggerfallWorkshop.Game
         }
 
         public ImageData RidingTexture { get { return ridingTexture; } }
+        public int FrameIndex { get { return frameIndex; } }
 
         #endregion
 
@@ -70,19 +72,11 @@ namespace DaggerfallWorkshop.Game
         {
             StreamingWorld world = GameManager.Instance.StreamingWorld;
             DFPosition shipCoords = DaggerfallBankManager.GetShipCoords();
-            return boardShipPosition != null && world.MapPixelX == shipCoords.X && world.MapPixelY == shipCoords.Y;
+            return boardShipPosition != null && shipCoords != null && world.MapPixelX == shipCoords.X && world.MapPixelY == shipCoords.Y;
         }
 
         /// <summary>
-        /// True when player has bought a ship
-        /// </summary>
-        public bool HasShip()
-        {
-            return DaggerfallBankManager.OwnsShip;
-        }
-
-        /// <summary>
-        /// True when player owns a ship
+        /// True when player owns a cart
         /// </summary>
         /// <returns></returns>
         public bool HasCart()
@@ -122,6 +116,17 @@ namespace DaggerfallWorkshop.Game
             }
         }
 
+        public delegate bool PlayerShipAvailiable();
+        public PlayerShipAvailiable ShipAvailiable { get; set; }
+
+        /// <summary>
+        /// True when player has bought a ship
+        /// </summary>
+        private bool HasShip()
+        {
+            return DaggerfallBankManager.OwnsShip;
+        }
+
         #endregion
 
         #region Private Fields
@@ -146,10 +151,12 @@ namespace DaggerfallWorkshop.Game
         DaggerfallAudioSource dfAudioSource;
         AudioSource ridingAudioSource;
 
+        private bool pendingStopRidingAudio;
+
         ImageData ridingTexture;
         ImageData[] ridingTexures = new ImageData[4];
         float lastFrameTime = 0;
-        int frameIdx = 0;
+        int frameIndex = 0;
 
         AudioClip neighClip;
         float neighTime = 0;
@@ -158,6 +165,12 @@ namespace DaggerfallWorkshop.Game
         #endregion
 
         #region Unity
+
+        void Awake()
+        {
+            ShipAvailiable = HasShip;
+        }
+
         // Use this for initialization
         void Start()
         {
@@ -189,35 +202,46 @@ namespace DaggerfallWorkshop.Game
             }
         }
 
+        IEnumerator StopRidingAudio()
+        {
+            pendingStopRidingAudio = true;
+            yield return new WaitForSecondsRealtime(0.2f);
+            ridingAudioSource.Stop();
+            pendingStopRidingAudio = false;
+        }
+
         // Update is called once per frame
         void Update()
         {
             // Handle horse & cart riding animation & sounds.
             if (mode == TransportModes.Horse || mode == TransportModes.Cart)
             {
-                // refresh audio volume to reflect global changes
-                ridingAudioSource.volume = RidingVolumeScale * DaggerfallUnity.Settings.SoundVolume;
+
                 if (playerMotor.IsStandingStill || !playerMotor.IsGrounded || GameManager.IsGamePaused)
                 {   // Stop animation frames and sound playing.
                     lastFrameTime = 0;
+                    frameIndex = 0;
                     ridingTexture = ridingTexures[0];
-                    ridingAudioSource.Stop();
+                    if (!pendingStopRidingAudio)
+                        StartCoroutine(StopRidingAudio());
                 }
                 else
                 {   // Update Animation frame?
                     if (lastFrameTime == 0)
                     {
-                        lastFrameTime = Time.time;
+                        lastFrameTime = Time.unscaledTime;
                     }
-                    else if (Time.time > lastFrameTime + animFrameTime)
+                    else if (Time.unscaledTime > lastFrameTime + animFrameTime)
                     {
-                        lastFrameTime = Time.time;
-                        frameIdx = (frameIdx == 3) ? 0 : frameIdx + 1;
-                        ridingTexture = ridingTexures[frameIdx];
+                        lastFrameTime = Time.unscaledTime;
+                        frameIndex = (frameIndex == 3) ? 0 : frameIndex + 1;
+                        ridingTexture = ridingTexures[frameIndex];
                     }
                     // Get appropriate hoof sound for horse
                     if (mode == TransportModes.Horse)
                     {
+                        pendingStopRidingAudio = false;
+
                         if (!wasMovingLessThanHalfSpeed && playerMotor.IsMovingLessThanHalfSpeed)
                         {
                             wasMovingLessThanHalfSpeed = true;
@@ -229,16 +253,21 @@ namespace DaggerfallWorkshop.Game
                             ridingAudioSource.clip = dfAudioSource.GetAudioClip((int)horseRidingSound2);
                         }
                     }
+                    // refresh audio volume to reflect global changes
+                    float volumeScale = RidingVolumeScale;
+                    if (playerMotor.IsMovingLessThanHalfSpeed)
+                        volumeScale *= 0.5f;
+
+                    ridingAudioSource.volume = volumeScale * DaggerfallUnity.Settings.SoundVolume;
                     ridingAudioSource.pitch = playerMotor.IsRunning ? 1.2f : 1f;
 
                     if (!ridingAudioSource.isPlaying)
                     {
-                        ridingAudioSource.volume = RidingVolumeScale * DaggerfallUnity.Settings.SoundVolume;
                         ridingAudioSource.Play();
                     }
                 }
                 // Time for a whinney?
-                if (neighTime < Time.time)
+                if (neighTime < Time.time && dfAudioSource.AudioSource.enabled)
                 {
                     dfAudioSource.AudioSource.PlayOneShot(neighClip, RidingVolumeScale * DaggerfallUnity.Settings.SoundVolume);
                     neighTime = Time.time + Random.Range(2, 40);
@@ -258,10 +287,20 @@ namespace DaggerfallWorkshop.Game
                     float horseScaleY = (float)Screen.height / (float)nativeScreenHeight;
                     float horseScaleX = horseScaleY * ScaleFactorX;
 
+                    // Allow horse to be offset when large HUD enabled
+                    // This is enabled by default to match classic but can be toggled for either docked/undocked large HUD
+                    float horseOffsetHeight = 0;
+                    if (DaggerfallUI.Instance.DaggerfallHUD != null &&
+                        DaggerfallUnity.Settings.LargeHUD &&
+                        DaggerfallUnity.Settings.LargeHUDOffsetHorse)
+                    {
+                        horseOffsetHeight = (int)DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight;
+                    }
+
                     // Calculate position for horse texture and draw it.
                     Rect pos = new Rect(
                                     Screen.width / 2f - (ridingTexture.width * horseScaleX) / 2f,
-                                    Screen.height - (ridingTexture.height * horseScaleY),
+                                    Screen.height - (ridingTexture.height * horseScaleY) - horseOffsetHeight,
                                     ridingTexture.width * horseScaleX,
                                     ridingTexture.height * horseScaleY);
                     GUI.DrawTexture(pos, ridingTexture.texture);
@@ -272,6 +311,7 @@ namespace DaggerfallWorkshop.Game
         #endregion
 
         #region Private Methods
+
         private void UpdateMode(TransportModes transportMode)
         {
             // Update the transport mode and stop any riding sounds playing.

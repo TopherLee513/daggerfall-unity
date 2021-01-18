@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -60,7 +60,7 @@ namespace DaggerfallWorkshop.Game.Questing
             }
 
             // Start target task based on player carrying item
-            if (GameManager.Instance.PlayerEntity.Items.Contains(item.DaggerfallUnityItem))
+            if (GameManager.Instance.PlayerEntity.Items.Contains(item))
                 ParentQuest.StartTask(targetTask);
         }
 

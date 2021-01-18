@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -103,6 +103,7 @@ namespace DaggerfallWorkshop
         // Keys
         public int key;                             // Key of this material
         public int keyGroup;                        // Group of this material
+        public float timeStamp;                     // Time in seconds from startup during last access
 
         // Textures
         public Texture2D albedoMap;                 // Albedo texture of material
@@ -117,6 +118,7 @@ namespace DaggerfallWorkshop
         public FilterMode filterMode;               // Filter mode of this material
         public int singleFrameCount;                // Number of frames in single animated material
         public int[] atlasFrameCounts;              // Array of frame counts for animated materials
+        public int framesPerSecond;                 // Number of frames per second in single animated material
 
         // Windows
         public bool isWindow;                       // True if this is a window material
@@ -162,6 +164,7 @@ namespace DaggerfallWorkshop
         public int NumFrames;                       // Number of frames in this animation
         public int FramePerSecond;                  // Speed at which this animation plays
         public bool FlipLeftRight;                  // True if animation flipped left-to-right
+        public bool BounceAnim;                     // Plays anim forwards then backwards - only works on move/idle looping anims
     }
 
     /// <summary>
@@ -171,7 +174,6 @@ namespace DaggerfallWorkshop
     public struct MobileEnemy
     {
         public int ID;                              // ID of this mobile
-        public string Name;                         // In-game name of this mobile
         public MobileBehaviour Behaviour;           // Behaviour of mobile
         public MobileAffinity Affinity;             // Affinity of mobile
         public MobileGender Gender;                 // Gender of mobile
@@ -208,6 +210,8 @@ namespace DaggerfallWorkshop
         public int Weight;                          // Weight of this enemy. Affects chance of being knocked back by a hit.
         public bool CastsMagic;                     // Whether this enemy casts magic. Only used for enemy classes.
         public bool SeesThroughInvisibility;        // Whether this enemy sees through the shade, chameleon and invisibility effects.
+        public Color? GlowColor;                   // Emitted light color
+        public bool NoShadow;                       // Casts no shadows
         public int SoulPts;                         // Number of enchantment points in a trapped soul of this enemy
         public int[] PrimaryAttackAnimFrames;       // Animation sequence to play when doing primary attack
         public int ChanceForAttack2;                // Chance to use PrimaryAttackAnimFrames2 for an attack
@@ -221,6 +225,10 @@ namespace DaggerfallWorkshop
         public int[] RangedAttackAnimFrames;        // Animation sequence to play when doing bow & arrow attack
         public bool HasSpellAnimation;              // Whether or not this character has specific animations for casting spells
         public int[] SpellAnimFrames;               // Animation sequence to play when doing a spell cast
+        public bool HasSeducerTransform1;           // Has Seducer start transform amins
+        public bool HasSeducerTransform2;           // Has Seducer end transform anims
+        public int[] SeducerTransform1Frames;       // Animation sequence to play when Seducer crouches and grows wings
+        public int[] SeducerTransform2Frames;       // Animation sequence to play when Seducer stands and spreads wings
         public MobileTeams Team;                    // Team that this enemy uses if enemy in-fighting is on
     }
 
@@ -368,6 +376,7 @@ namespace DaggerfallWorkshop
         public int mapLocationIndex;                // Map location index (if location present)
         public int locationID;                      // Location ID (if location present)
         public string locationName;                 // Location name (if location present)
+        public DFRegion.LocationTypes LocationType; // Location type (if location present)       
         public float averageHeight;                 // Average height of terrain for location placement
         public float maxHeight;                     // Max height of terrain for location placement
         public Rect locationRect;                   // Rect of location tiles in sample are

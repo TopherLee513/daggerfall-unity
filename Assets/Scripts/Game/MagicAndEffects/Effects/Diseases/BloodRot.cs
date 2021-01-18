@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -9,19 +9,22 @@
 // Notes:
 //
 
+using DaggerfallConnect.Arena2;
+
 namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 {
     public class BloodRot : DiseaseEffect
     {
+        Diseases diseaseType = Diseases.BloodRot;
+
         public override void SetProperties()
         {
-            Diseases diseaseType = Diseases.BloodRot;
-
             properties.Key = GetClassicDiseaseEffectKey(diseaseType);
             properties.ShowSpellIcon = false;
             classicDiseaseType = diseaseType;
             diseaseData = GetClassicDiseaseData(diseaseType);
-            contractedMessageTokens = GetClassicContractedMessageTokens(diseaseType);
         }
+
+        public override TextFile.Token[] ContractedMessageTokens => GetClassicContractedMessageTokens(diseaseType);
     }
 }

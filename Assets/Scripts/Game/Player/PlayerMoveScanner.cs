@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -315,6 +315,15 @@ namespace DaggerfallWorkshop.Game
                 inFrontDirection = controller.transform.forward;
                
             HitSomethingInFront = (Physics.Raycast(controller.transform.position, inFrontDirection, out hit, controller.radius + 0.1f));
+        }
+
+        public void ResetAdjacentSurfaces()
+        {
+            AboveBehindWall = null;
+            FrontWall = null;
+            SideWall = null;
+            BelowBehindWall = null;
+            FrontUnderCeiling = null;
         }
     }
 }

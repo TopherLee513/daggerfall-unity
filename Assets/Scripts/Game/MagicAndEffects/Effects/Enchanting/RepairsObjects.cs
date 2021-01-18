@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -29,12 +29,13 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         public override void SetProperties()
         {
             properties.Key = EffectKey;
-            properties.GroupName = TextManager.Instance.GetText(textDatabase, EffectKey);
             properties.ShowSpellIcon = false;
             properties.AllowedCraftingStations = MagicCraftingStations.ItemMaker;
             properties.ItemMakerFlags = ItemMakerFlags.AllowMultiplePrimaryInstances;
             properties.EnchantmentPayloadFlags = EnchantmentPayloadFlags.Held;
         }
+
+        public override string GroupName => TextManager.Instance.GetLocalizedText(EffectKey);
 
         public override EnchantmentSettings[] GetEnchantmentSettings()
         {
@@ -45,7 +46,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                 EffectKey = EffectKey,
                 ClassicType = EnchantmentTypes.RepairsObjects,
                 ClassicParam = -1,
-                PrimaryDisplayName = properties.GroupName,
+                PrimaryDisplayName = GroupName,
                 EnchantCost = enchantCost,
             };
 

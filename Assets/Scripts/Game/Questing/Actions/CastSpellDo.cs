@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -34,7 +34,7 @@ namespace DaggerfallWorkshop.Game.Questing
         {
             get
             {
-                return @"cast (?<aSpell>[a-zA-Z0-9_.-]+) spell do (?<aTask>[a-zA-Z0-9_.-]+)";
+                return @"cast (?<aSpell>[a-zA-Z0-9'_.-]+) spell do (?<aTask>[a-zA-Z0-9_.-]+)";
             }
         }
 

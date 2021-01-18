@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -10,6 +10,7 @@
 //
 
 using DaggerfallConnect;
+using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game.Entity;
 
 namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
@@ -24,11 +25,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         public override void SetProperties()
         {
             properties.Key = EffectKey;
-            properties.ClassicKey = MakeClassicKey(28, 255);
-            properties.GroupName = TextManager.Instance.GetText(textDatabase, "freeAction");
-            properties.SubGroupName = string.Empty;
-            properties.SpellMakerDescription = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1576);
-            properties.SpellBookDescription = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1276);
+            properties.ClassicKey = MakeClassicKey(26, 255);
             properties.SupportDuration = true;
             properties.AllowedTargets = EntityEffectBroker.TargetFlags_All;
             properties.AllowedElements = ElementTypes.Magic;
@@ -37,11 +34,15 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             properties.DurationCosts = MakeEffectCosts(20, 8);
         }
 
+        public override string GroupName => TextManager.Instance.GetLocalizedText("freeAction");
+        public override TextFile.Token[] SpellMakerDescription => DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1576);
+        public override TextFile.Token[] SpellBookDescription => DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1276);
+
         public override void SetPotionProperties()
         {
             EffectSettings cureSettings = SetEffectChance(DefaultEffectSettings(), 5, 19, 1);
             PotionRecipe freeAction = new PotionRecipe(
-                TextManager.Instance.GetText(textDatabase, "freeAction"),
+                "freeAction",
                 125,
                 cureSettings,
                 (int)Items.MiscellaneousIngredients1.Ichor,

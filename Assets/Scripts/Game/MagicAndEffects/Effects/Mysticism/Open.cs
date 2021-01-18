@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -10,9 +10,8 @@
 //
 
 using DaggerfallConnect;
-using DaggerfallConnect.FallExe;
+using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game.Entity;
-using DaggerfallWorkshop.Game.Items;
 
 namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 {
@@ -25,15 +24,13 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
         int forcedRoundsRemaining = 1;
         bool awakeAlert = true;
+        bool castByItem = false;
         bool castBySkeletonKey = false;
 
         public override void SetProperties()
         {
             properties.Key = EffectKey;
             properties.ClassicKey = MakeClassicKey(17, 255);
-            properties.GroupName = TextManager.Instance.GetText("ClassicEffects", "open");
-            properties.SpellMakerDescription = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1565);
-            properties.SpellBookDescription = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1265);
             properties.ShowSpellIcon = false;
             properties.SupportChance = true;
             properties.ChanceFunction = ChanceFunction.Custom;
@@ -44,17 +41,21 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             properties.ChanceCosts = MakeEffectCosts(20, 100);
         }
 
+        public override string GroupName => TextManager.Instance.GetLocalizedText("open");
+        public override TextFile.Token[] SpellMakerDescription => DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1565);
+        public override TextFile.Token[] SpellBookDescription => DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1265);
+
         public override void Start(EntityEffectManager manager, DaggerfallEntityBehaviour caster = null)
         {
             base.Start(manager, caster);
-            CheckCastBySkeletonKey();
+            CheckCastByItem();
             StartWaitingForDoor();
         }
 
         public override void Resume(EntityEffectManager.EffectSaveData_v1 effectData, EntityEffectManager manager, DaggerfallEntityBehaviour caster = null)
         {
             base.Resume(effectData, manager, caster);
-            CheckCastBySkeletonKey();
+            CheckCastByItem();
             StartWaitingForDoor();
         }
 
@@ -79,10 +80,11 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
 
         void StartWaitingForDoor()
         {
-            // Do nothing if failed - Skeleton's Key always works
-            if (!castBySkeletonKey && !RollChance())
+            // Do nothing if spell chance fails
+            // Always succeeds chance roll when cast by item but still subject to level vs. door requirement
+            if (!castByItem && !castBySkeletonKey && !RollChance())
             {
-                DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "spellEffectFailed"));
+                DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("spellEffectFailed"));
                 CancelEffect();
                 return;
             }
@@ -90,7 +92,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             // Output "Ready to open." if the host manager is player
             if (awakeAlert && manager.EntityBehaviour == GameManager.Instance.PlayerEntityBehaviour)
             {
-                DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "readyToOpen"), 1.5f);
+                DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("readyToOpen"), 1.5f);
                 awakeAlert = false;
             }
         }
@@ -119,7 +121,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                 }
                 else if (activatedByPlayer)
                 {
-                    DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, "openFailed"), 1.5f);
+                    DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("openFailed"), 1.5f);
                 }
             }
 
@@ -142,8 +144,10 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             ResignAsIncumbent();
         }
 
-        void CheckCastBySkeletonKey()
+        void CheckCastByItem()
         {
+            castByItem = ParentBundle.castByItem != null;
+
             castBySkeletonKey = 
                 ParentBundle.castByItem != null &&
                 ParentBundle.castByItem.IsArtifact &&

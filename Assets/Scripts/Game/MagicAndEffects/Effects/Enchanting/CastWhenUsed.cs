@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -32,12 +32,13 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         public override void SetProperties()
         {
             properties.Key = EffectKey;
-            properties.GroupName = TextManager.Instance.GetText(textDatabase, EffectKey);
             properties.ShowSpellIcon = false;
             properties.AllowedCraftingStations = MagicCraftingStations.ItemMaker;
             properties.ItemMakerFlags = ItemMakerFlags.AllowMultiplePrimaryInstances | ItemMakerFlags.AlphaSortSecondaryList;
             properties.EnchantmentPayloadFlags = EnchantmentPayloadFlags.Used;
         }
+
+        public override string GroupName => TextManager.Instance.GetLocalizedText(EffectKey);
 
         /// <summary>
         /// Outputs spells available to this item effect abstracted as EnchantmentSettings array.
@@ -62,7 +63,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                     EffectKey = EffectKey,
                     ClassicType = EnchantmentTypes.CastWhenUsed,
                     ClassicParam = id,
-                    PrimaryDisplayName = properties.GroupName,
+                    PrimaryDisplayName = GroupName,
                     SecondaryDisplayName = spellRecord.spellName,
                     EnchantCost = classicSpellCosts[i],
                 };
@@ -79,7 +80,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                     Version = 1,
                     EffectKey = EffectKey,
                     CustomParam = offer.Key,
-                    PrimaryDisplayName = properties.GroupName,
+                    PrimaryDisplayName = GroupName,
                     SecondaryDisplayName = offer.BundleSetttings.Name,
                     EnchantCost = offer.EnchantmentCost,
                 };
@@ -105,6 +106,15 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             if (!effectManager)
                 return null;
 
+            // Do not activate enchantment if broken
+            // But still return durability loss so "item has broken" message displays
+            // If AllowMagicRepairs enabled then item will not disappear
+            if (sourceItem != null && sourceItem.currentCondition <= 0)
+                return new PayloadCallbackResults()
+                {
+                    durabilityLoss = durabilityLossOnUse
+                };
+
             // Cast when used enchantment prepares a new ready spell
             if (!string.IsNullOrEmpty(param.Value.CustomParam))
             {
@@ -125,7 +135,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                         bundle = new EntityEffectBundle(bundleSettings, sourceEntity);
                         bundle.CastByItem = sourceItem;
                         if (bundle.Settings.TargetType == TargetTypes.CasterOnly)
-                            effectManager.AssignBundle(bundle, AssignBundleFlags.BypassSavingThrows);
+                            effectManager.AssignBundle(bundle, AssignBundleFlags.BypassSavingThrows | AssignBundleFlags.BypassChance);
                         else
                             effectManager.SetReadySpell(bundle, true);
                     }

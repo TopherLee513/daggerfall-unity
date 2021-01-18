@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -71,7 +71,6 @@ namespace DaggerfallWorkshop
         int lastSkyFrame = -1;
         bool lastNightFlag = false;
         Rect westRect, eastRect;
-        CameraClearFlags initialClearFlags;
         System.Random random = new System.Random(0);
         bool showNightSky = true;
 
@@ -123,9 +122,6 @@ namespace DaggerfallWorkshop
                 return;
             }
 
-            // Save starting clear flags
-            initialClearFlags = mainCamera.clearFlags;
-
             // Get my camera
             myCamera = GetComponent<Camera>();
             if (!myCamera)
@@ -150,13 +146,6 @@ namespace DaggerfallWorkshop
         void OnEnable()
         {
             SetupCameras();
-        }
-
-        void OnDisable()
-        {
-            // Restore main camera clear flags so we left it how we found it
-            if (mainCamera)
-                mainCamera.clearFlags = initialClearFlags;
         }
 
         void Update()
@@ -251,8 +240,8 @@ namespace DaggerfallWorkshop
             float yShear = (Mathf.Tan(angleXRadians) * zoom) * 0.50f;
             float scrollY = Mathf.Clamp(baseScrollY - (yShear * Screen.height), -height, 0f);
 
-            westRect = new Rect(westOffset + scrollX, scrollY, width, height);
-            eastRect = new Rect(eastOffset + scrollX, scrollY, width, height);
+            westRect = new Rect((int)(westOffset + scrollX), scrollY, width, height);
+            eastRect = new Rect((int)(eastOffset + scrollX), scrollY, width, height);
         }
 
         private void DrawSky()
@@ -491,7 +480,6 @@ namespace DaggerfallWorkshop
             if (AutoCameraSetup)
             {
                 myCamera.depth = mainCamera.depth + myCameraDepth;
-                mainCamera.clearFlags = CameraClearFlags.Nothing;
             }
         }
 

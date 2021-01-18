@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -226,6 +226,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
 
         readonly static fsSerializer fsSerializer = new fsSerializer();
         readonly static Dictionary<string, Type> types = new Dictionary<string, Type>();
+        readonly static Dictionary<string, float> deserializedObjects = new Dictionary<string, float>();
 
         #endregion
 
@@ -280,8 +281,24 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// </summary>
         /// <param name="mod">The mod that contains components type and serialized data.</param>
         /// <param name="gameObject">A gameobject instance.</param>
-        public static void Restore(Mod mod, GameObject gameObject)
+        /// <param name="assetname">Persistent and unique assetname inside the mod.</param>
+        public static void Restore(Mod mod, GameObject gameObject, string assetname)
         {
+            if (mod.GUID.Equals("invalid", StringComparison.Ordinal))
+            {
+                Debug.LogErrorFormat("Failed to deserialize asset {0} for mod {1} because mod GUID is invalid.", assetname, mod.Title);
+                return;
+            }
+
+            string assetKey = string.Format("{0}-{1}", mod.GUID, assetname);
+            float instanceID = gameObject.GetInstanceID();
+
+            // Make sure a gameobject is not deserialized more than one time.
+            // This can happen if is removed from cache then readded without being unloaded due to other references.
+            float currentInstanceID;
+            if (deserializedObjects.TryGetValue(assetKey, out currentInstanceID) && currentInstanceID == instanceID)
+                return;
+            
             fsSerializer.Context.Set(mod);
             object instance = gameObject;
             fsData fsData = fsJsonParser.Parse(LoadSerializedFile(mod, gameObject.name));
@@ -289,6 +306,8 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
             if (fsResult.Failed || fsResult.HasWarnings)
                 Debug.LogErrorFormat("Deserialization of {0} from {1} {2} with messages:\n{3}",
                     gameObject.name, mod.Title, fsResult.Succeeded ? "succeeded" : "failed", fsResult.FormattedMessages);
+
+            deserializedObjects[assetKey] = instanceID;
         }
 
         #endregion
@@ -304,7 +323,21 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
             if (types.TryGetValue(typeName, out type))
                 return type;
 
-            return types[typeName] = mod.GetCompiledType(typeName);
+            if ((type = mod.GetCompiledType(typeName)) == null && mod.ModInfo.Dependencies != null)
+            {
+                for (int i = 0; i < mod.ModInfo.Dependencies.Length; i++)
+                {
+                    ModDependency dependency = mod.ModInfo.Dependencies[i];
+                    if (!dependency.IsOptional)
+                    {
+                        Mod target = ModManager.Instance.GetModFromName(dependency.Name);
+                        if (target != null && (type = target.GetCompiledType(typeName)) != null)
+                            break;
+                    }
+                }
+            }
+
+            return types[typeName] = type;
         }
 
         private static string LoadSerializedFile(Mod mod, string name)

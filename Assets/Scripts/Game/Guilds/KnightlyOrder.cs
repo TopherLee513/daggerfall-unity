@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -16,6 +16,7 @@ using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game.Items;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
 using DaggerfallWorkshop.Game.Banking;
+using UnityEngine;
 
 namespace DaggerfallWorkshop.Game.Guilds
 {
@@ -39,6 +40,7 @@ namespace DaggerfallWorkshop.Game.Guilds
 
         private const int ArmorFlagMask = 1;
         private const int HouseFlagMask = 2;
+        private const int ArmorFlagStart = 4;
 
         #endregion
 
@@ -109,15 +111,6 @@ namespace DaggerfallWorkshop.Game.Guilds
         #endregion
 
         #region Guild Membership and Faction
-
-        public override TextFile.Token[] UpdateRank(PlayerEntity playerEntity)
-        {
-            TextFile.Token[] tokens = base.UpdateRank(playerEntity);
-            if (tokens != null)
-                flags = 0;
-
-            return tokens;
-        }
 
         public override int GetFactionId()
         {
@@ -200,7 +193,8 @@ namespace DaggerfallWorkshop.Game.Guilds
 
         public void ReceiveArmor(PlayerEntity playerEntity)
         {
-            if ((flags & ArmorFlagMask) > 0)
+            int armorMask = ArmorFlagStart << rank;
+            if ((flags & armorMask) > 0)
             {
                 DaggerfallUI.MessageBox(NoArmorId);
             }
@@ -214,7 +208,7 @@ namespace DaggerfallWorkshop.Game.Guilds
                     rewardArmor.AddItem(ItemBuilder.CreateArmor(playerEntity.Gender, playerEntity.Race, armor, material));
                 }
                 DaggerfallMessageBox mb = DaggerfallUI.MessageBox(ArmorId);
-                DaggerfallUI.Instance.InventoryWindow.SetChooseOne(rewardArmor, item => flags = flags | ArmorFlagMask);
+                DaggerfallUI.Instance.InventoryWindow.SetChooseOne(rewardArmor, item => flags = flags | armorMask);
                 mb.OnClose += ReceiveArmorPopup_OnClose;
             }
         }
@@ -232,7 +226,7 @@ namespace DaggerfallWorkshop.Game.Guilds
             }
             else if ((flags & HouseFlagMask) > 0)
             {
-                DaggerfallUI.MessageBox(HardStrings.serviceReceiveHouseAlready);
+                DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("serviceReceiveHouseAlready"));
             }
             else
             {   // Give a house if one availiable
@@ -280,16 +274,24 @@ namespace DaggerfallWorkshop.Game.Guilds
 
         #region Serialization
 
-        internal override GuildMembership_v1 GetGuildData()
+        public override GuildMembership_v1 GetGuildData()
         {
             return new GuildMembership_v1() { rank = rank, lastRankChange = lastRankChange, variant = (int)order, flags = flags };
         }
 
-        internal override void RestoreGuildData(GuildMembership_v1 data)
+        public override void RestoreGuildData(GuildMembership_v1 data)
         {
             base.RestoreGuildData(data);
             order = (Orders)data.variant;
             flags = data.flags;
+            if ((flags & 4092) == 0)
+            {
+                for (int i = 0; i < rank; i++)
+                    flags = flags | ArmorFlagStart << i;
+                if ((flags & ArmorFlagMask) > 0)
+                    flags = flags | ArmorFlagStart << rank;
+                Debug.LogFormat("Converted flags: {0}, rank: {1}, new flags: {2}", Convert.ToString(data.flags, 2), rank, Convert.ToString(flags, 2));
+            }
         }
 
         #endregion

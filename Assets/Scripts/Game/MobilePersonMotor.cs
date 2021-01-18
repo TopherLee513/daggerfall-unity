@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -15,6 +15,7 @@ using DaggerfallConnect.Utility;
 using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game.Utility;
 using DaggerfallWorkshop.Game.Entity;
+using DaggerfallWorkshop.Game.Utility.ModSupport;
 
 namespace DaggerfallWorkshop.Game
 {
@@ -53,7 +54,7 @@ namespace DaggerfallWorkshop.Game
 
         // References
         DaggerfallEntityBehaviour entityBehaviour;
-        MobilePersonBillboard mobileBillboard;
+        MobilePersonAsset mobileAsset;
 
         #endregion
 
@@ -161,7 +162,7 @@ namespace DaggerfallWorkshop.Game
         {
             // Cache references
             entityBehaviour = GetComponent<DaggerfallEntityBehaviour>();
-            mobileBillboard = GetComponentInChildren<MobilePersonBillboard>();
+            mobileAsset = FindMobilePersonAsset();
 
             // Need to repath if floating origin ticks while in range
             FloatingOrigin.OnPositionUpdate += FloatingOrigin_OnPositionUpdate;
@@ -182,7 +183,7 @@ namespace DaggerfallWorkshop.Game
             // Do nothing if paralyzed
             if (entityBehaviour.Entity.IsParalyzed)
             {
-                mobileBillboard.IsIdle = false;
+                mobileAsset.IsIdle = false;
                 return;
             }
 
@@ -223,16 +224,16 @@ namespace DaggerfallWorkshop.Game
             else
                 wantsToStop = false;
 
-            if (!wantsToStop && mobileBillboard.IsIdle)
+            if (!wantsToStop && mobileAsset.IsIdle)
             {
                 // Switch animation state back to moving
-                mobileBillboard.IsIdle = false;
+                mobileAsset.IsIdle = false;
                 currentMobileState = MobileStates.MovingForward;
             }
-            else if (wantsToStop && !mobileBillboard.IsIdle)
+            else if (wantsToStop && !mobileAsset.IsIdle)
             {
                 // Switch animation state to idle
-                mobileBillboard.IsIdle = true;
+                mobileAsset.IsIdle = true;
                 currentMobileState = MobileStates.Idle;
             }
 
@@ -310,7 +311,7 @@ namespace DaggerfallWorkshop.Game
 
             // Get current and target weights
             int currentWeight = GetCurrentNavPositionWeight();
-            int targetWeight = localWeights[(int)currentDirection];
+            int targetWeight = IsDirectionClear(currentDirection) ? localWeights[(int)currentDirection] : 0;
 
             // A small chance to randomly change direction - this keeps the movement shuffled
             if (Random.Range(0f, 1f) < randomChangeChance)
@@ -321,7 +322,7 @@ namespace DaggerfallWorkshop.Game
             {
                 // Try to move in any valid random direction
                 int randomDirection = Random.Range(0, localWeights.Length);
-                if (localWeights[randomDirection] == 0)
+                if (localWeights[randomDirection] == 0 || !IsDirectionClear((MobileDirection)randomDirection))
                     return;
 
                 SetFacing((MobileDirection)randomDirection);
@@ -339,7 +340,7 @@ namespace DaggerfallWorkshop.Game
                 System.Random rand = new System.Random();
                 foreach (int i in Enumerable.Range(0, 3).OrderBy(x => rand.Next(3)))
                 {
-                    if (localWeights[i] > bestWeight)
+                    if (localWeights[i] > bestWeight && IsDirectionClear((MobileDirection)i))
                     {
                         bestWeight = localWeights[i];
                         bestDirection = (MobileDirection)i;
@@ -378,6 +379,42 @@ namespace DaggerfallWorkshop.Game
         #endregion
 
         #region Private Methods
+
+        private MobilePersonAsset FindMobilePersonAsset()
+        {
+            var mobilePersonAsset = GetComponentInChildren<MobilePersonAsset>();
+
+            GameObject customMobilePersonAssetGo;
+            if (ModManager.Instance && ModManager.Instance.TryGetAsset<GameObject>("MobilePersonAsset", true, out customMobilePersonAssetGo))
+            {
+                var customMobilePersonAsset = customMobilePersonAssetGo.GetComponent<MobilePersonAsset>();
+                if (customMobilePersonAsset)
+                {
+                    mobilePersonAsset.gameObject.SetActive(false);
+                    customMobilePersonAssetGo.transform.SetParent(gameObject.transform);
+                    mobilePersonAsset = customMobilePersonAsset;
+                    mobilePersonAsset.Trigger = GetComponent<CapsuleCollider>();
+                }
+                else
+                {
+                    Debug.LogError("Failed to retrieve MobilePersonAsset component from GameObject.");
+                }
+            }
+
+            return mobilePersonAsset;
+        }
+
+        // Check for geometry in the way (stairs,...)
+        bool IsDirectionClear(MobileDirection direction)
+        {
+            Vector3 tempTargetScenePosition = cityNavigation.WorldToScenePosition(cityNavigation.NavGridToWorldPosition(GetNextNavPosition(direction)));
+            // Aim low to better detect stairs
+            tempTargetScenePosition.y += 0.1f;
+            Ray ray = new Ray(transform.position, tempTargetScenePosition - transform.position);
+            bool collision = Physics.Raycast(transform.position, tempTargetScenePosition - transform.position, Vector3.Distance(transform.position, tempTargetScenePosition), ~mobileAsset.GetLayerMask());
+            // Debug.DrawRay(transform.position, tempTargetScenePosition - transform.position, collision ? Color.red : Color.green, 1f);
+            return !collision;
+        }
 
         void SetTargetPosition()
         {

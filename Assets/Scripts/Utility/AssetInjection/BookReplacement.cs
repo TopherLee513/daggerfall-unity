@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -24,6 +24,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
     [Serializable]
     internal struct BookMappingEntry
     {
+#pragma warning disable 649
         /// <summary>
         /// The file name with the extension; for example `example-book.TXT` for `StreamingAssets\Books\example-book.TXT`.
         /// </summary>
@@ -53,6 +54,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
         /// </summary>
         [SerializeField]
         internal int? WhenVarSet;
+#pragma warning restore 649
     }
 
     /// <summary>
@@ -81,12 +83,6 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
 
         #region Internal Methods
 
-        internal static void AssertCustomBooksImportEnabled()
-        {
-            if (!DaggerfallUnity.Settings.CustomBooksImport)
-                throw new InvalidOperationException("Custom books import is disabled.");
-        }
-
         /// <summary>
         /// Read maps data for additional custom books from modding locations.
         /// </summary>
@@ -98,8 +94,6 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
         /// </remarks>
         internal static void FindAdditionalBooks(Dictionary<int, string> bookIDNameMapping)
         {
-            AssertCustomBooksImportEnabled();
-
             if (!customBooksSeeked)
             {
                 foreach (string mapContent in GetBooksMaps())
@@ -129,10 +123,6 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
                         }
                     }
                 }
-
-                if (BookMappingEntries.Count > 0)
-                    Debug.LogWarningFormat("Imported {0} custom books. Addition of custom books is EXPERIMENTAL and may introduce bugs! " +
-                        "Breaking changes to this feature can also be expected until is considered stable.", BookMappingEntries.Count);
 
                 customBooksSeeked = true;
             }

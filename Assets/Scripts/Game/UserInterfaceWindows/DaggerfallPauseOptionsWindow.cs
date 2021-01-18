@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -23,24 +23,26 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
     {
         #region Fields
 
-        const string nativeImgName = "OPTN00I0.IMG";
-        const int strAreYouSure = 1069;
-        const float barMaxLength = 109.1f;
+        protected const string nativeImgName = "OPTN00I0.IMG";
+        protected const int strAreYouSure = 1069;
+        protected const float barMaxLength = 109.1f;
 
-        Texture2D nativeTexture;
-        Panel optionsPanel = new Panel();
-        Panel fullScreenTick;
-        Panel headBobbingTick;
-        Panel musicBar;
-        Panel soundBar;
-        Panel detailBar;
-        DaggerfallHUD hud;
-        TextLabel versionTextLabel;
+        protected Texture2D nativeTexture;
+        protected Panel optionsPanel = new Panel();
+        protected Panel fullScreenTick;
+        protected Panel headBobbingTick;
+        protected Panel musicBar;
+        protected Panel soundBar;
+        protected Panel detailBar;
+        protected DaggerfallHUD hud;
+        protected TextLabel versionTextLabel;
 
-        readonly Color versionTextColor = new Color(0.75f, 0.75f, 0.75f, 1);
-        readonly Color versionShadowColor = new Color(0.15f, 0.15f, 0.15f, 1);
+        protected readonly Color versionTextColor = new Color(0.75f, 0.75f, 0.75f, 1);
+        protected readonly Color versionShadowColor = new Color(0.15f, 0.15f, 0.15f, 1);
 
-        bool saveSettings = false;
+        protected bool saveSettings = false;
+
+        protected KeyCode toggleClosedBinding;
 
         #endregion
 
@@ -76,20 +78,24 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // Exit game
             Button exitButton = DaggerfallUI.AddButton(new Rect(101, 4, 45, 16), optionsPanel);
             exitButton.OnMouseClick += ExitButton_OnMouseClick;
+            exitButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.OptionsExit);
 
             // Continue
             Button continueButton = DaggerfallUI.AddButton(new Rect(76, 60, 70, 17), optionsPanel);
             continueButton.OnMouseClick += ContinueButton_OnMouseClick;
+            continueButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.OptionsContinue);
 
             // Save game
             Button saveButton = DaggerfallUI.AddButton(new Rect(4, 4, 45, 16), optionsPanel);
             //saveButton.BackgroundColor = DaggerfallUI.DaggerfallUnityNotImplementedColor;
             saveButton.OnMouseClick += SaveButton_OnMouseClick;
+            saveButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.OptionsSave);
 
             // Load game
             Button loadButton = DaggerfallUI.AddButton(new Rect(52, 4, 46, 16), optionsPanel);
             //loadButton.BackgroundColor = DaggerfallUI.DaggerfallUnityNotImplementedColor;
             loadButton.OnMouseClick += LoadButton_OnMouseClick;
+            loadButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.OptionsLoad);
 
             // Sound Bar
             Button soundPanel = DaggerfallUI.AddButton(new Rect(6.15f, 23.20f, barMaxLength, 5.5f), optionsPanel);
@@ -112,17 +118,20 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // Controls
             Button controlsButton = DaggerfallUI.AddButton(new Rect(5, 60, 70, 17), optionsPanel);
             controlsButton.OnMouseClick += ControlsButton_OnMouseClick;
+            controlsButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.OptionsControls);
 
             // Full screen
             Button fullScreenButton = DaggerfallUI.AddButton(new Rect(5, 47, 70, 8), optionsPanel);
             fullScreenButton.OnMouseClick += FullScreenButton_OnMouseClick;
+            fullScreenButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.OptionsFullScreen);
             fullScreenTick = DaggerfallUI.AddPanel(new Rect(64f, 3.2f, 3.7f, 3.2f), fullScreenButton);
             fullScreenTick.BackgroundColor = DaggerfallUI.DaggerfallUnityDefaultCheckboxToggleColor;
-            fullScreenTick.Enabled = DaggerfallUnity.Settings.LargeHUD;
+            fullScreenTick.Enabled = !DaggerfallUnity.Settings.LargeHUD;
 
             // Head bobbing
             Button headBobbingButton = DaggerfallUI.AddButton(new Rect(76, 47, 70, 8), optionsPanel);
             headBobbingButton.OnMouseClick += HeadBobbingButton_OnMouseClick;
+            headBobbingButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.OptionsHeadBobbing);
             headBobbingTick = DaggerfallUI.AddPanel(new Rect(64f, 3.2f, 3.7f, 3.2f), headBobbingButton);
             headBobbingTick.BackgroundColor = DaggerfallUI.DaggerfallUnityDefaultCheckboxToggleColor;
             headBobbingTick.Enabled = DaggerfallUnity.Settings.HeadBobbing;
@@ -140,6 +149,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         public override void OnPush()
         {
             base.OnPush();
+
+            toggleClosedBinding = InputManager.Instance.GetBinding(InputManager.Actions.Escape);
 
             hud = DaggerfallUI.Instance.DaggerfallHUD;
         }
@@ -159,6 +170,13 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
             // Scale version text based on native panel scaling
             versionTextLabel.TextScale = NativePanel.LocalScale.x * 0.75f;
+
+            if (!DaggerfallUI.Instance.HotkeySequenceProcessed)
+            {
+                // Toggle window closed with same hotkey used to open it
+                if (InputManager.Instance.GetKeyUp(toggleClosedBinding))
+                    CloseWindow();
+            }
         }
 
         public override void Draw()
@@ -198,6 +216,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void SoundBar_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             // make it easier to max out or mute volume
             if ((position.x / barMaxLength) > 0.99f)
                 position.x = barMaxLength;
@@ -211,6 +230,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         }
         private void MusicBar_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             // make it easier to max out or mute volume
             if ((position.x / barMaxLength) > 0.99f)
                 position.x = barMaxLength;
@@ -225,6 +245,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void DetailButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             int value = Mathf.RoundToInt(Mathf.Lerp(0, QualitySettings.names.Length - 1, position.x / sender.Size.x));
             detailBar.Size = new Vector2(GetDetailBarWidth(value), detailBar.Size.y);
             QualitySettings.SetQualityLevel(DaggerfallUnity.Settings.QualityLevel = value);
@@ -236,6 +257,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void ExitButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             DaggerfallMessageBox confirmExitBox = new DaggerfallMessageBox(uiManager, DaggerfallMessageBox.CommonMessageBoxButtons.YesNo, strAreYouSure, this);
             confirmExitBox.OnButtonClick += ConfirmExitBox_OnButtonClick;
             confirmExitBox.Show();
@@ -256,37 +278,38 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void ContinueButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             CancelWindow();
         }
 
         private void SaveButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
-            //// TEMP: Quick save
-            //SaveLoadManager.Instance.QuickSave();
-            //CancelWindow();
-
-            DaggerfallUnitySaveGameWindow saveWindow = new DaggerfallUnitySaveGameWindow(uiManager, DaggerfallUnitySaveGameWindow.Modes.SaveGame, this);
-            uiManager.PushWindow(saveWindow);
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+            if (GameManager.Instance.SaveLoadManager.IsSavingPrevented)
+                DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("cannotSaveNow"));
+            else
+                uiManager.PushWindow(UIWindowFactory.GetInstanceWithArgs(UIWindowType.UnitySaveGame, new object[] { uiManager, DaggerfallUnitySaveGameWindow.Modes.SaveGame, this, false }));
         }
 
         private void LoadButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
-            // TEMP: Show load window
-            //uiManager.PushWindow(new DaggerfallLoadSavedGameWindow(uiManager));
-
-            DaggerfallUnitySaveGameWindow loadWindow = new DaggerfallUnitySaveGameWindow(uiManager, DaggerfallUnitySaveGameWindow.Modes.LoadGame, this);
-            uiManager.PushWindow(loadWindow);
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+            uiManager.PushWindow(UIWindowFactory.GetInstanceWithArgs(UIWindowType.UnitySaveGame, new object[] { uiManager, DaggerfallUnitySaveGameWindow.Modes.LoadGame, this, false }));
         }
 
         private void ControlsButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             uiManager.PostMessage(DaggerfallUIMessages.dfuiOpenControlsWindow);
         }
 
         private void FullScreenButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+
             // Fullscreen button toggles large HUD setting
-            fullScreenTick.Enabled = DaggerfallUnity.Settings.LargeHUD = !DaggerfallUnity.Settings.LargeHUD;
+            DaggerfallUnity.Settings.LargeHUD = !DaggerfallUnity.Settings.LargeHUD;
+            fullScreenTick.Enabled = !DaggerfallUnity.Settings.LargeHUD;
 
             if (!saveSettings)
                 saveSettings = true;
@@ -294,6 +317,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void HeadBobbingButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             //Debug.Log("Head Bobbing clicked, position: x: " + position.x + ", y: " + position.y);
             DaggerfallUnity.Settings.HeadBobbing = !DaggerfallUnity.Settings.HeadBobbing;
             headBobbingTick.Enabled = DaggerfallUnity.Settings.HeadBobbing;

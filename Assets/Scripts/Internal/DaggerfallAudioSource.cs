@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -204,6 +204,29 @@ namespace DaggerfallWorkshop
         public void PlayOneShot(SoundClips soundClip, float spatialBlend = 1, float volumeScale = 1f)
         {
             PlayOneShot((int)soundClip, spatialBlend, volumeScale);
+        }
+
+        /// <summary>
+        /// Plays sound clip once at a specified position without changing clip on AudioSource.
+        /// </summary>
+        public void PlayClipAtPoint(int soundIndex, Vector3 position, float volumeScale = 1f)
+        {
+            if (enabled && ReadyCheck())
+            {
+                AudioClip clip = dfUnity.SoundReader.GetAudioClip(soundIndex);
+                if (clip)
+                {
+                    AudioSourceExtensionMethods.PlayClipAtPointWhenReady(clip, position, volumeScale);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Plays sound clip once at a specified position without changing clip on AudioSource.
+        /// </summary>
+        public void PlayClipAtPoint(SoundClips soundClip, Vector3 position, float volumeScale = 1f)
+        {
+            PlayClipAtPoint((int)soundClip, position, volumeScale);
         }
 
         /// <summary>

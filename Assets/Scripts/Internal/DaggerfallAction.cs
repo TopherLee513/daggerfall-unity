@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -473,11 +473,19 @@ namespace DaggerfallWorkshop
                         {
                             // Spell is fired at player, at strength of player level, from triggering object
                             DaggerfallMissile missile = GameManager.Instance.PlayerEffectManager.InstantiateSpellMissile(bundleSettings.ElementType);
-                            missile.Payload = new EntityEffectBundle(bundleSettings, GameManager.Instance.PlayerEntityBehaviour);
+                            missile.Payload = new EntityEffectBundle(bundleSettings);
                             Vector3 customAimPosition = thisAction.transform.position;
                             customAimPosition.y += 40 * MeshReader.GlobalScale;
                             missile.CustomAimPosition = customAimPosition;
                             missile.CustomAimDirection = Vector3.Normalize(GameManager.Instance.PlayerObject.transform.position - thisAction.transform.position);
+
+                            // If action spell payload is "touch" then set to "target at range" (targets player position as above)
+                            if (missile.Payload.Settings.TargetType == TargetTypes.ByTouch)
+                            {
+                                EffectBundleSettings settings = missile.Payload.Settings;
+                                settings.TargetType = TargetTypes.SingleTargetAtRange;
+                                missile.Payload.Settings = settings;
+                            }
                         }
                     }
                 }
@@ -672,10 +680,8 @@ namespace DaggerfallWorkshop
 
         /// <summary>
         /// 21
-        /// Damages players health, uses random range & activates sporadically
+        /// Damages players health, uses random range and activates sporadically.
         /// </summary>
-        /// <param name="prevObj"></param>
-        /// <param name="thisAction"></param>
         public static void DrainHealth21(GameObject triggerObj, DaggerfallAction thisAction)
         {
             //action type 21 activates every ~20 times for some reason.  Might be better to rand instead

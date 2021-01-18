@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -25,15 +25,30 @@ namespace DaggerfallWorkshop.Game.UserInterface
         #region Fields
 
         const float blinkInterval = 0.25f;
-        const int maxIconRow = 10;
-        const int maxIconPool = 20;
+        const int maxIconPool = 24;
 
-        const int classicSelfStartX = 51;
-        const int classicSelfStartY = 16;
-        const int classicOtherStartX = 75;
-        const int classicOtherStartY = 177;
-        const int classicIconDim = 16;
-        const int classicHorzSpacing = 24;
+        class IconsPositioning
+        {
+            public readonly Vector2 iconSize;
+
+            public readonly Vector2 origin;
+            public readonly Vector2 columnStep;
+            public readonly Vector2 rowStep;
+
+            public readonly int iconColumns;
+
+            public IconsPositioning(Vector2 iconSize, Vector2 origin, Vector2 columnStep, Vector2 rowStep, int iconColumns)
+            {
+                this.iconSize = iconSize;
+                this.origin = origin;
+                this.columnStep = columnStep;
+                this.rowStep = rowStep;
+                this.iconColumns = iconColumns;
+            }
+        }
+
+        IconsPositioning selfIconsPositioning;
+        IconsPositioning otherIconsPositioning;
 
         Panel[] iconPool = new Panel[maxIconPool];
         List<ActiveSpellIcon> activeSelfList = new List<ActiveSpellIcon>();
@@ -42,6 +57,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
         bool blinkState = false;
         float blinkTimer = 0;
         ToolTip defaultToolTip = null;
+        bool lastLargeHUD;
 
         #endregion
 
@@ -75,6 +91,8 @@ namespace DaggerfallWorkshop.Game.UserInterface
             GameManager.Instance.PlayerEffectManager.OnRemoveBundle += UpdateIcons;
             GameManager.Instance.PlayerEffectManager.OnAddIncumbentState += UpdateIcons;
             SaveLoadManager.OnLoad += SaveLoadManager_OnLoad;
+
+            lastLargeHUD = DaggerfallUnity.Settings.LargeHUD;
 
             InitIcons();
         }
@@ -110,18 +128,23 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 if (defaultToolTip != null)
                     defaultToolTip.Update();
             }
+
+            // Adjust icons when large HUD state changes
+            if (DaggerfallUI.Instance.DaggerfallHUD != null &&
+                DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.Enabled != lastLargeHUD)
+            {
+                lastLargeHUD = DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.Enabled;
+                UpdateIcons();
+            }
         }
 
         public override void Draw()
         {
             base.Draw();
 
-            if (GameManager.IsGamePaused)
-            {
-                // Draw tooltips only when paused
-                if (defaultToolTip != null)
-                    defaultToolTip.Draw();
-            }
+            // Draw tooltips when paused or cursor active
+            if ((GameManager.IsGamePaused || GameManager.Instance.PlayerMouseLook.cursorActive) && defaultToolTip != null)
+                defaultToolTip.Draw();
         }
 
         #endregion
@@ -157,7 +180,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
             // Never show passive items specials icon, this is an internal system effect only
             foreach (IEntityEffect effect in bundle.liveEffects)
             {
-                if (effect.Properties.ShowSpellIcon && (effect.RoundsRemaining > 0 || bundle.fromEquippedItem != null))
+                if (effect.Properties.ShowSpellIcon && (effect.RoundsRemaining >= 0 || bundle.fromEquippedItem != null))
                 {
                     return true;
                 }
@@ -168,6 +191,50 @@ namespace DaggerfallWorkshop.Game.UserInterface
 
         void InitIcons()
         {
+            switch (DaggerfallUnity.Settings.IconsPositioningScheme.ToLower())
+            {
+                case "classic":
+                    // row of big buff icons at the top, wrapping downward, row of debuffs at the bottom, wrapping upward
+                    selfIconsPositioning = new IconsPositioning(new Vector2(16, 16), new Vector2(27, 16), new Vector2(24, 0), new Vector2(0, 24), 12);
+                    otherIconsPositioning = new IconsPositioning(new Vector2(16, 16), new Vector2(27, 177), new Vector2(24, 0), new Vector2(0, -24), 12);
+                    break;
+                case "medium":
+                    // same as classic, slightly smaller icons
+                    selfIconsPositioning = new IconsPositioning(new Vector2(12, 12), new Vector2(27, 16), new Vector2(16, 0), new Vector2(0, 16), 16);
+                    otherIconsPositioning = new IconsPositioning(new Vector2(12, 12), new Vector2(27, 177), new Vector2(16, 0), new Vector2(0, -16), 16);
+                    break;
+                case "small":
+                    // same as classic, even smaller icons, wrapped to stays on left side of screen
+                    selfIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(27, 16), new Vector2(10, 0), new Vector2(0, 10), 6);
+                    otherIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(27, 177), new Vector2(10, 0), new Vector2(0, -10), 6);
+                    break;
+                case "smalldeckleft":
+                    // same as small, but slightly slanted toward the center of the screen
+                    selfIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(27, 28), new Vector2(10, -2), new Vector2(0, 10), 6);
+                    otherIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(27, 165), new Vector2(10, 2), new Vector2(0, -10), 6);
+                    break;
+                case "smalldeckright":
+                    // same as smalldeckleft, but on the right side of screen
+                    selfIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(296, 28), new Vector2(-10, -2), new Vector2(0, 10), 6);
+                    otherIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(296, 165), new Vector2(-10, 2), new Vector2(0, -10), 6);
+                    break;
+                case "smallvertleft":
+                    // Two aligned columns on the left, buffs going downward, debuffs going upward
+                    selfIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(27, 16), new Vector2(0, 10), new Vector2(10, 0), 10);
+                    otherIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(27, 177), new Vector2(0, -10), new Vector2(10, 0), 4);
+                    break;
+                case "smallvertright":
+                    // Two aligned columns on the right, buffs going downward, debuffs going upward
+                    selfIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(296, 16), new Vector2(0, 10), new Vector2(-10, 0), 10);
+                    otherIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(296, 177), new Vector2(0, -10), new Vector2(-10, 0), 4);
+                    break;
+                case "smallhorzbottom":
+                    // No wrapping, two rows at the bottom of screen, debuffs above buffs
+                    selfIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(27, 177), new Vector2(10, 0), new Vector2(0, 0), 0);
+                    otherIconsPositioning = new IconsPositioning(new Vector2(8, 8), new Vector2(27, 167), new Vector2(10, 0), new Vector2(0, 0), 0);
+                    break;
+            }
+
             // Setup default tooltip
             if (DaggerfallUnity.Settings.EnableToolTips)
             {
@@ -181,11 +248,13 @@ namespace DaggerfallWorkshop.Game.UserInterface
             // Setup icon panels
             for (int i = 0; i < iconPool.Length; i++)
             {
-                iconPool[i] = new Panel();
-                iconPool[i].BackgroundColor = Color.black;
-                iconPool[i].AutoSize = AutoSizeModes.None;
-                iconPool[i].Enabled = false;
-                iconPool[i].ToolTip = defaultToolTip;
+                iconPool[i] = new Panel
+                {
+                    BackgroundColor = Color.clear, // classic uses a black background
+                    AutoSize = AutoSizeModes.None,
+                    Enabled = false,
+                    ToolTip = defaultToolTip
+                };
                 Components.Add(iconPool[i]);
             }
         }
@@ -236,7 +305,7 @@ namespace DaggerfallWorkshop.Game.UserInterface
                 item.iconIndex = bundle.iconIndex;
                 item.icon = bundle.icon;
                 item.poolIndex = poolIndex++;
-                item.expiring = (GetMaxRoundsRemaining(bundle) <= 2) ? true : false;
+                item.expiring = (GetMaxRoundsRemaining(bundle) < 2) ? true : false;
                 item.isItem = (effectBundles[i].fromEquippedItem != null);
                 if (bundle.caster == null || bundle.caster != GameManager.Instance.PlayerEntityBehaviour)
                     activeOtherList.Add(item);
@@ -245,25 +314,51 @@ namespace DaggerfallWorkshop.Game.UserInterface
             }
 
             // Update icon panels in pooled collection
-            AlignIcons(activeSelfList, classicSelfStartX, classicSelfStartY, classicIconDim, classicIconDim, classicHorzSpacing);
-            AlignIcons(activeOtherList, classicOtherStartX, classicOtherStartY, classicIconDim, classicIconDim, classicHorzSpacing);
+            AlignIcons(activeSelfList, selfIconsPositioning);
+            AlignIcons(activeOtherList, otherIconsPositioning);
         }
 
-        void AlignIcons(List<ActiveSpellIcon> icons, float xpos, float ypos, float width, float height, float xspacing, float yspacing = 0)
+        void AlignIcons(List<ActiveSpellIcon> icons, IconsPositioning iconsPositioning)
         {
+            Vector2 rowOrigin = iconsPositioning.origin;
+            Vector2 position = rowOrigin;
+            int column = 0;
             foreach (ActiveSpellIcon spell in icons)
             {
                 if(spell.poolIndex < maxIconPool)
                 {
-                    iconPool[spell.poolIndex].Enabled = true;
-                    iconPool[spell.poolIndex].BackgroundTexture = DaggerfallUI.Instance.SpellIconCollection.GetSpellIcon(spell.icon);
-                    iconPool[spell.poolIndex].Position = new Vector2(xpos, ypos);
-                    iconPool[spell.poolIndex].Size = new Vector2(width, height);
-                    iconPool[spell.poolIndex].ToolTipText = spell.displayName;
-                    xpos += xspacing;
-                    ypos += yspacing;
-
+                    Panel icon = iconPool[spell.poolIndex];
+                    icon.Enabled = true;
+                    icon.BackgroundTexture = DaggerfallUI.Instance.SpellIconCollection.GetSpellIcon(spell.icon);
+                    icon.Position = position;
+                    AdjustIconPositionForLargeHUD(icon);
+                    icon.Size = iconsPositioning.iconSize;
+                    icon.ToolTipText = spell.displayName;
+                    if (++column == iconsPositioning.iconColumns)
+                    {
+                        rowOrigin += iconsPositioning.rowStep;
+                        position = rowOrigin;
+                        column = 0;
+                    }
+                    else
+                    {
+                        position += iconsPositioning.columnStep;
+                    }
                 }
+            }
+        }
+
+        void AdjustIconPositionForLargeHUD(Panel icon)
+        {
+            // Adjust position for variable sized large HUD
+            // Icon will remain in default position unless it needs to avoid being drawn under HUD
+            if (DaggerfallUI.Instance.DaggerfallHUD != null && DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.Enabled)
+            {
+                float startY = icon.Position.y;
+                float offset = Screen.height - (int)DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.Rectangle.height;
+                float localY = (offset / LocalScale.y) - 18;
+                if (localY < startY)
+                    icon.Position = new Vector2(icon.Position.x, (int)localY);
             }
         }
 

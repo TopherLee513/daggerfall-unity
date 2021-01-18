@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -34,13 +34,14 @@ namespace DaggerfallWorkshop.Utility
         const float natureFlatsOffsetY = -2f;
         public const uint CityGateOpenModelID = 446;
         public const uint CityGateClosedModelID = 447;
+        public const uint BulletinBoardModelID = 41739;
 
         // Animal sounds range. Matched to classic.
         const float animalSoundMaxDistance = 768 * MeshReader.GlobalScale;
 
         #region Structures
 
-        struct BuildingPoolItem
+        class BuildingPoolItem
         {
             public DFLocation.BuildingData buildingData;
             public bool used;
@@ -49,6 +50,16 @@ namespace DaggerfallWorkshop.Utility
         #endregion
 
         #region Layout Methods
+
+        /// <summary>
+        /// Gets the model scale vector, converting zeros to 1s if needed.
+        /// </summary>
+        /// <param name="obj">RmbBlock3dObjectRecord structure</param>
+        /// <returns>Vector3 with the scaling factors</returns>
+        public static Vector3 GetModelScaleVector(DFBlock.RmbBlock3dObjectRecord obj)
+        {
+            return new Vector3(obj.XScale == 0 ? 1 : obj.XScale, obj.YScale == 0 ? 1 : obj.YScale, obj.ZScale == 0 ? 1 : obj.YScale);
+        }
 
         /// <summary>
         /// Gets block data with validation.
@@ -237,7 +248,7 @@ namespace DaggerfallWorkshop.Utility
                         GameObject go = GameObjectHelper.CreateDaggerfallBillboardGameObject(natureArchive, scenery.TextureRecord, flatsParent);
                         go.transform.position = billboardPosition;
                         AlignBillboardToBase(go);
-                    } 
+                    }
                 }
             }
         }
@@ -288,7 +299,7 @@ namespace DaggerfallWorkshop.Utility
                     }
 
                     // Import light prefab
-                    AddLight(dfUnity, obj, lightsParent);       
+                    AddLight(dfUnity, obj, lightsParent);
                 }
             }
         }
@@ -522,6 +533,11 @@ namespace DaggerfallWorkshop.Utility
                     if (!contentReader.GetBlock(blockName, out block))
                         throw new Exception("GetCompleteBuildingData() could not read block " + blockName);
 
+                    // Make a copy of the building data array for our block copy since we're modifying it
+                    DFLocation.BuildingData[] buildingArray = new DFLocation.BuildingData[block.RmbBlock.FldHeader.BuildingDataList.Length];
+                    Array.Copy(block.RmbBlock.FldHeader.BuildingDataList, buildingArray, block.RmbBlock.FldHeader.BuildingDataList.Length);
+                    block.RmbBlock.FldHeader.BuildingDataList = buildingArray;
+
                     // Assign building data for this block
                     BuildingReplacementData buildingReplacementData;
                     for (int i = 0; i < block.RmbBlock.SubRecords.Length; i++)
@@ -529,37 +545,38 @@ namespace DaggerfallWorkshop.Utility
                         DFLocation.BuildingData building = block.RmbBlock.FldHeader.BuildingDataList[i];
                         if (IsNamedBuilding(building.BuildingType))
                         {
+                            // Try to find next building and merge data
+                            BuildingPoolItem item;
+                            if (!GetNextBuildingFromPool(namedBuildingPool, building.BuildingType, out item))
+                            {
+                                Debug.LogFormat("End of city building list reached without finding building type {0} in location {1}.{2}", building.BuildingType, location.RegionName, location.Name);
+                            }
+
+                            // Copy found city building data to block level
+                            building.NameSeed = item.buildingData.NameSeed;
+                            building.FactionId = item.buildingData.FactionId;
+                            building.Sector = item.buildingData.Sector;
+                            building.LocationId = item.buildingData.LocationId;
+                            building.Quality = item.buildingData.Quality;
+
                             // Check for replacement building data and use it if found
                             if (WorldDataReplacement.GetBuildingReplacementData(blockName, block.Index, i, out buildingReplacementData))
                             {
-                                // Use custom building values from replacement data, don't use pool or maps file
-                                building.NameSeed = location.Exterior.Buildings[0].NameSeed;
-                                building.FactionId = buildingReplacementData.FactionId;
-                                building.BuildingType = (DFLocation.BuildingTypes) buildingReplacementData.BuildingType;
-                                building.LocationId = location.Exterior.Buildings[0].LocationId;
+                                // Use custom building values from replacement data, but only use up pool item if factionId is zero
+                                if (buildingReplacementData.FactionId != 0)
+                                {
+                                    // Don't use up pool item and set factionId from replacement data
+                                    item.used = false;
+                                    building.FactionId = buildingReplacementData.FactionId;
+                                }
+                                // Always override type and quality
+                                building.BuildingType = (DFLocation.BuildingTypes)buildingReplacementData.BuildingType;
                                 building.Quality = buildingReplacementData.Quality;
-                            }
-                            else
-                            {
-                                // Try to find next building and merge data
-                                BuildingPoolItem item;
-                                if (!GetNextBuildingFromPool(namedBuildingPool, building.BuildingType, out item))
-                                {
-                                    Debug.LogFormat("End of city building list reached without finding building type {0} in location {1}.{2}", building.BuildingType, location.RegionName, location.Name);
-                                }
-                                else
-                                {
-                                    // Copy found city building data to block level
-                                    building.NameSeed = item.buildingData.NameSeed;
-                                    building.FactionId = item.buildingData.FactionId;
-                                    building.Sector = item.buildingData.Sector;
-                                    building.LocationId = item.buildingData.LocationId;
-                                    building.Quality = item.buildingData.Quality;
-                                }
                             }
 
                             // Matched to classic: special handling for some Order of the Raven buildings
-                            if (block.RmbBlock.FldHeader.OtherNames[i] == "KRAVE01.HS2")
+                            if (block.RmbBlock.FldHeader.OtherNames != null &&
+                                block.RmbBlock.FldHeader.OtherNames[i] == "KRAVE01.HS2")
                             {
                                 building.BuildingType = DFLocation.BuildingTypes.GuildHall;
                                 building.FactionId = 414;
@@ -590,14 +607,11 @@ namespace DaggerfallWorkshop.Utility
             {
                 if (!namedBuildingPool[i].used && namedBuildingPool[i].buildingData.BuildingType == buildingType)
                 {
-                    BuildingPoolItem item = namedBuildingPool[i];
-                    item.used = true;
-                    namedBuildingPool[i] = item;
-                    itemOut = item;
+                    itemOut = namedBuildingPool[i];
+                    itemOut.used = true;
                     return true;
                 }
             }
-
             return false;
         }
 
@@ -679,6 +693,11 @@ namespace DaggerfallWorkshop.Utility
             }
         }
 
+        /// <summary>
+        /// Checks if building is a tavern.
+        /// </summary>
+        public static bool IsTavern(DFLocation.BuildingTypes buildingType) => buildingType == DFLocation.BuildingTypes.Tavern;
+
         #endregion
 
         #region Private Methods
@@ -711,8 +730,9 @@ namespace DaggerfallWorkshop.Utility
                 {
                     // Get model transform
                     Vector3 modelPosition = new Vector3(obj.XPos, -obj.YPos, obj.ZPos) * MeshReader.GlobalScale;
-                    Vector3 modelRotation = new Vector3(0, -obj.YRotation / BlocksFile.RotationDivisor, 0);
-                    Matrix4x4 modelMatrix = subRecordMatrix * Matrix4x4.TRS(modelPosition, Quaternion.Euler(modelRotation), Vector3.one);
+                    Vector3 modelRotation = new Vector3(-obj.XRotation / BlocksFile.RotationDivisor, -obj.YRotation / BlocksFile.RotationDivisor, -obj.ZRotation / BlocksFile.RotationDivisor);
+                    Vector3 modelScale = GetModelScaleVector(obj);
+                    Matrix4x4 modelMatrix = subRecordMatrix * Matrix4x4.TRS(modelPosition, Quaternion.Euler(modelRotation), modelScale);
 
                     // Get model data
                     ModelData modelData;
@@ -757,7 +777,7 @@ namespace DaggerfallWorkshop.Utility
 
                     // Use Daggerfall Model
                     // Add or combine
-                    if (combiner == null || IsCityGate(obj.ModelIdNum))
+                    if (combiner == null || IsCityGate(obj.ModelIdNum) || IsBulletinBoard(obj.ModelIdNum) || PlayerActivate.HasCustomActivation(obj.ModelIdNum))
                         AddStandaloneModel(dfUnity, ref modelData, modelMatrix, parent);
                     else
                         combiner.Add(ref modelData, modelMatrix);
@@ -782,8 +802,9 @@ namespace DaggerfallWorkshop.Utility
             {
                 // Get model transform
                 Vector3 modelPosition = new Vector3(obj.XPos, -obj.YPos + propsOffsetY, obj.ZPos + BlocksFile.RMBDimension) * MeshReader.GlobalScale;
-                Vector3 modelRotation = new Vector3(0, -obj.YRotation / BlocksFile.RotationDivisor, 0);
-                Matrix4x4 modelMatrix = Matrix4x4.TRS(modelPosition, Quaternion.Euler(modelRotation), Vector3.one);
+                Vector3 modelRotation = new Vector3(-obj.XRotation / BlocksFile.RotationDivisor, -obj.YRotation / BlocksFile.RotationDivisor, -obj.ZRotation / BlocksFile.RotationDivisor);
+                Vector3 modelScale = GetModelScaleVector(obj);
+                Matrix4x4 modelMatrix = Matrix4x4.TRS(modelPosition, Quaternion.Euler(modelRotation), modelScale);
 
                 // Get model data
                 ModelData modelData;
@@ -799,10 +820,14 @@ namespace DaggerfallWorkshop.Utility
 
                 // Use Daggerfall Model
                 // Add or combine
-                if (combiner == null)
+                if (combiner == null || IsBulletinBoard(obj.ModelIdNum) || PlayerActivate.HasCustomActivation(obj.ModelIdNum))
+                {
                     AddStandaloneModel(dfUnity, ref modelData, modelMatrix, parent);
+                }
                 else
+                {
                     combiner.Add(ref modelData, modelMatrix);
+                }
             }
         }
 
@@ -817,12 +842,19 @@ namespace DaggerfallWorkshop.Utility
             // Add GameObject
             GameObject go = GameObjectHelper.CreateDaggerfallMeshGameObject(modelID, parent, dfUnity.Option_SetStaticFlags);
             go.transform.position = matrix.GetColumn(3);
-            go.transform.rotation = GameObjectHelper.QuaternionFromMatrix(matrix);
+            go.transform.rotation = matrix.rotation;
+            go.transform.localScale = matrix.lossyScale;
 
             // Is this a city gate?
             if (IsCityGate(modelID))
             {
                 go.AddComponent<DaggerfallCityGate>();
+            }
+
+            // Is this a bulletin board?
+            if (IsBulletinBoard(modelID))
+            {
+                go.AddComponent<DaggerfallBulletinBoard>();
             }
 
             return go;
@@ -862,10 +894,14 @@ namespace DaggerfallWorkshop.Utility
 
         private static bool IsCityGate(uint modelID)
         {
-            if (modelID == CityGateOpenModelID || modelID == CityGateClosedModelID)
-                return true;
-            else
-                return false;
+            // Two variants of City Gate model known
+            return modelID == CityGateOpenModelID || modelID == CityGateClosedModelID;
+        }
+
+        private static bool IsBulletinBoard(uint modelID)
+        {
+            // Only a single variant of Bulletin Board model known
+            return modelID == BulletinBoardModelID;
         }
 
         private static void AddAnimalAudioSource(GameObject go)
@@ -875,7 +911,7 @@ namespace DaggerfallWorkshop.Utility
 
             DaggerfallBillboard dfBillboard = go.GetComponent<DaggerfallBillboard>();
             SoundClips sound = SoundClips.None;
-            switch(dfBillboard.Summary.Record)
+            switch (dfBillboard.Summary.Record)
             {
                 case 0:
                 case 1:

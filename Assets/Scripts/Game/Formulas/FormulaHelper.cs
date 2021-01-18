@@ -1,11 +1,10 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    Hazelnut
-//                  ifkopifko
+// Contributors:    Allofich, Hazelnut, ifkopifko, Numidium, TheLacus
 // 
 // Notes:
 //
@@ -23,6 +22,7 @@ using DaggerfallWorkshop.Game.Items;
 using DaggerfallWorkshop.Utility;
 using DaggerfallConnect.Save;
 using DaggerfallWorkshop.Game.Utility;
+using DaggerfallWorkshop.Game.Utility.ModSupport;
 
 namespace DaggerfallWorkshop.Game.Formulas
 {
@@ -34,32 +34,38 @@ namespace DaggerfallWorkshop.Game.Formulas
     /// </summary>
     public static class FormulaHelper
     {
-        // Delegate method signatures for overriding default formula
-        public delegate int Formula_NoParams();
-        public delegate int Formula_1i(int a);
-        public delegate int Formula_2i(int a, int b);
-        public delegate int Formula_3i(int a, int b, int c);
-        public delegate int Formula_1i_1f(int a, float b);
-        public delegate int Formula_2de_2i(DaggerfallEntity de1, DaggerfallEntity de2 = null, int a = 0, int b = 0, DaggerfallUnityItem item = null);
-        public delegate bool Formula_1pe_1sk(PlayerEntity pe, DFCareer.Skills sk);
+        private struct FormulaOverride
+        {
+            internal readonly Delegate Formula;
+            internal readonly Mod Provider;
 
-        // Registries for overridden formula
-        public static Dictionary<string, Formula_NoParams>  formula_noparams = new Dictionary<string, Formula_NoParams>();
-        public static Dictionary<string, Formula_1i>        formula_1i = new Dictionary<string, Formula_1i>();
-        public static Dictionary<string, Formula_2i>        formula_2i = new Dictionary<string, Formula_2i>();
-        public static Dictionary<string, Formula_3i>        formula_3i = new Dictionary<string, Formula_3i>();
-        public static Dictionary<string, Formula_1i_1f>     formula_1i_1f = new Dictionary<string, Formula_1i_1f>();
-        public static Dictionary<string, Formula_2de_2i>    formula_2de_2i = new Dictionary<string, Formula_2de_2i>();
-        public static Dictionary<string, Formula_1pe_1sk>   formula_1pe_1sk = new Dictionary<string, Formula_1pe_1sk>();
+            internal FormulaOverride(Delegate formula, Mod provider)
+            {
+                Formula = formula;
+                Provider = provider;
+            }
+        }
+
+        readonly static Dictionary<string, FormulaOverride> overrides = new Dictionary<string, FormulaOverride>();
 
         public static float specialInfectionChance = 0.6f;
+
+        // Approximation of classic frame updates
+        public const int classicFrameUpdate = 980;
+
+        /// <summary>Struct for return values of formula that affect damage and to-hit chance.</summary>
+        public struct ToHitAndDamageMods
+        {
+            public int damageMod;
+            public int toHitMod;
+        }
 
         #region Basic Formulas
 
         public static int DamageModifier(int strength)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("DamageModifier", out del))
+            Func<int, int> del;
+            if (TryGetOverride("DamageModifier", out del))
                 return del(strength);
 
             return (int)Mathf.Floor((float)(strength - 50) / 5f);
@@ -67,8 +73,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int MaxEncumbrance(int strength)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("MaxEncumbrance", out del))
+            Func<int, int> del;
+            if (TryGetOverride("MaxEncumbrance", out del))
                 return del(strength);
 
             return (int)Mathf.Floor((float)strength * 1.5f);
@@ -76,8 +82,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int SpellPoints(int intelligence, float multiplier)
         {
-            Formula_1i_1f del;
-            if (formula_1i_1f.TryGetValue("SpellPoints", out del))
+            Func<int, float, int> del;
+            if (TryGetOverride("SpellPoints", out del))
                 return del(intelligence, multiplier);
 
             return (int)Mathf.Floor((float)intelligence * multiplier);
@@ -85,8 +91,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int MagicResist(int willpower)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("MagicResist", out del))
+            Func<int, int> del;
+            if (TryGetOverride("MagicResist", out del))
                 return del(willpower);
 
             return (int)Mathf.Floor((float)willpower / 10f);
@@ -94,8 +100,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int ToHitModifier(int agility)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("ToHitModifier", out del))
+            Func<int, int> del;
+            if (TryGetOverride("ToHitModifier", out del))
                 return del(agility);
 
             return (int)Mathf.Floor((float)agility / 10f) - 5;
@@ -103,8 +109,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int HitPointsModifier(int endurance)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("HitPointsModifier", out del))
+            Func<int, int> del;
+            if (TryGetOverride("HitPointsModifier", out del))
                 return del(endurance);
 
             return (int)Mathf.Floor((float)endurance / 10f) - 5;
@@ -112,8 +118,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int HealingRateModifier(int endurance)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("HealingRateModifier", out del))
+            Func<int, int> del;
+            if (TryGetOverride("HealingRateModifier", out del))
                 return del(endurance);
 
             // Original Daggerfall seems to have a bug where negative endurance modifiers on healing rate
@@ -123,8 +129,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int MaxStatValue()
         {
-            Formula_NoParams del;
-            if (formula_noparams.TryGetValue("MaxStatValue", out del))
+            Func<int> del;
+            if (TryGetOverride("MaxStatValue", out del))
                 return del();
             else
                 return 100;
@@ -132,8 +138,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int BonusPool()
         {
-            Formula_NoParams del;
-            if (formula_noparams.TryGetValue("BonusPool", out del))
+            Func<int> del;
+            if (TryGetOverride("BonusPool", out del))
                 return del();
 
             const int minBonusPool = 4;        // The minimum number of free points to allocate on level up
@@ -151,9 +157,9 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Generates player health based on level and career hit points per level
         public static int RollMaxHealth(PlayerEntity player)
         {
-            Formula_2i del;
-            if (formula_2i.TryGetValue("RollMaxHealth", out del))
-                return del(player.Level, player.Career.HitPointsPerLevel);
+            Func<PlayerEntity, int> del;
+            if (TryGetOverride("RollMaxHealth", out del))
+                return del(player);
 
             const int baseHealth = 25;
             int maxHealth = baseHealth + player.Career.HitPointsPerLevel;
@@ -169,8 +175,8 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Calculate how much health the player should recover per hour of rest
         public static int CalculateHealthRecoveryRate(PlayerEntity player)
         {
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("CalculateHealthRecoveryRate", out del))
+            Func<PlayerEntity, int> del;
+            if (TryGetOverride("CalculateHealthRecoveryRate", out del))
                 return del(player);
 
             short medical = player.Skills.GetLiveSkillValue(DFCareer.Skills.Medical);
@@ -200,8 +206,8 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Calculate how much fatigue the player should recover per hour of rest
         public static int CalculateFatigueRecoveryRate(int maxFatigue)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("HealingRateModifier", out del))
+            Func<int, int> del;
+            if (TryGetOverride("HealingRateModifier", out del))
                 return del(maxFatigue);
 
             return Mathf.Max((int)Mathf.Floor(maxFatigue / 8), 1);
@@ -210,9 +216,9 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Calculate how many spell points the player should recover per hour of rest
         public static int CalculateSpellPointRecoveryRate(PlayerEntity player)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("HealingRateModifier", out del))
-                return del(player.MaxMagicka);
+            Func<PlayerEntity, int> del;
+            if (TryGetOverride("HealingRateModifier", out del))
+                return del(player);
 
             if (player.Career.NoRegenSpellPoints)
                 return 0;
@@ -223,8 +229,8 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Calculate chance of successfully lockpicking a door in an interior (an animating door). If this is higher than a random number between 0 and 100 (inclusive), the lockpicking succeeds.
         public static int CalculateInteriorLockpickingChance(int level, int lockvalue, int lockpickingSkill)
         {
-            Formula_3i del;
-            if (formula_3i.TryGetValue("CalculateInteriorLockpickingChance", out del))
+            Func<int, int, int, int> del;
+            if (TryGetOverride("CalculateInteriorLockpickingChance", out del))
                 return del(level, lockvalue, lockpickingSkill);
 
             int chance = (5 * (level - lockvalue) + lockpickingSkill);
@@ -234,8 +240,8 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Calculate chance of successfully lockpicking a door in an exterior (a door that leads to an interior). If this is higher than a random number between 0 and 100 (inclusive), the lockpicking succeeds.
         public static int CalculateExteriorLockpickingChance(int lockvalue, int lockpickingSkill)
         {
-            Formula_2i del;
-            if (formula_2i.TryGetValue("CalculateExteriorLockpickingChance", out del))
+            Func<int, int, int> del;
+            if (TryGetOverride("CalculateExteriorLockpickingChance", out del))
                 return del(lockvalue, lockpickingSkill);
 
             int chance = lockpickingSkill - (5 * lockvalue);
@@ -245,8 +251,8 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Calculate chance of successfully pickpocketing a target
         public static int CalculatePickpocketingChance(PlayerEntity player, EnemyEntity target)
         {
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("CalculatePickpocketingChance", out del))
+            Func<PlayerEntity, EnemyEntity, int> del;
+            if (TryGetOverride("CalculatePickpocketingChance", out del))
                 return del(player, target);
 
             int chance = player.Skills.GetLiveSkillValue(DFCareer.Skills.Pickpocket);
@@ -259,15 +265,41 @@ namespace DaggerfallWorkshop.Game.Formulas
         }
 
         // Calculate chance of being caught shoplifting items
-        public static int CalculateShopliftingChance(PlayerEntity player, DaggerfallEntity na, int shopQuality, int weightAndNumItems)
+        public static int CalculateShopliftingChance(PlayerEntity player, int shopQuality, int weightAndNumItems)
         {
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("CalculateShopliftingChance", out del))
-                return del(player, null, shopQuality, weightAndNumItems);
+            Func<PlayerEntity, int, int, int> del;
+            if (TryGetOverride("CalculateShopliftingChance", out del))
+                return del(player, shopQuality, weightAndNumItems);
 
             int chance = 100 - player.Skills.GetLiveSkillValue(DFCareer.Skills.Pickpocket);
             chance += shopQuality + weightAndNumItems;
             return Mathf.Clamp(chance, 5, 95);
+        }
+
+        // Calculate chance of successfully climbing - checked repeatedly while climbing
+        public static int CalculateClimbingChance(PlayerEntity player, int basePercentSuccess)
+        {
+            Func<PlayerEntity, int, int> del;
+            if (TryGetOverride("CalculateClimbingChance", out del))
+                return del(player, basePercentSuccess);
+
+            int skill = player.Skills.GetLiveSkillValue(DFCareer.Skills.Climbing);
+            int luck = player.Stats.GetLiveStatValue(DFCareer.Stats.Luck);
+            if (player.Race == Races.Khajiit)
+                skill += 30;
+
+            // Climbing effect states "target can climb twice as well" - doubling effective skill after racial applied
+            if (player.IsEnhancedClimbing)
+                skill *= 2;
+
+            // Clamp skill range
+            skill = Mathf.Clamp(skill, 5, 95);
+            float luckFactor = Mathf.Lerp(0, 10, luck * 0.01f);
+
+            // Skill Check
+            int chance = (int) (Mathf.Lerp(basePercentSuccess, 100, skill * .01f) + luckFactor);
+
+            return chance;
         }
 
         // Calculate how many uses a skill needs before its value will rise.
@@ -280,8 +312,8 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Calculate player level.
         public static int CalculatePlayerLevel(int startingLevelUpSkillsSum, int currentLevelUpSkillsSum)
         {
-            Formula_2i del;
-            if (formula_2i.TryGetValue("CalculatePlayerLevel", out del))
+            Func<int, int, int> del;
+            if (TryGetOverride("CalculatePlayerLevel", out del))
                 return del(startingLevelUpSkillsSum, currentLevelUpSkillsSum);
 
             return (int)Mathf.Floor((currentLevelUpSkillsSum - startingLevelUpSkillsSum + 28) / 15);
@@ -290,8 +322,8 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Calculate hit points player gains per level.
         public static int CalculateHitPointsPerLevelUp(PlayerEntity player)
         {
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("CalculateHitPointsPerLevelUp", out del))
+            Func<PlayerEntity, int> del;
+            if (TryGetOverride("CalculateHitPointsPerLevelUp", out del))
                 return del(player);
 
             int minRoll = player.Career.HitPointsPerLevel / 2;
@@ -306,8 +338,8 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Calculate whether the player is successful at pacifying an enemy.
         public static bool CalculateEnemyPacification(PlayerEntity player, DFCareer.Skills languageSkill)
         {
-            Formula_1pe_1sk del;
-            if (formula_1pe_1sk.TryGetValue("CalculateEnemyPacification", out del))
+            Func<PlayerEntity, DFCareer.Skills, bool> del;
+            if (TryGetOverride("CalculateEnemyPacification", out del))
                 return del(player, languageSkill);
 
             double chance = 0;
@@ -379,12 +411,12 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         #endregion
 
-        #region Damage
+        #region Combat & Damage
 
         public static int CalculateHandToHandMinDamage(int handToHandSkill)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("CalculateHandToHandMinDamage", out del))
+            Func<int, int> del;
+            if (TryGetOverride("CalculateHandToHandMinDamage", out del))
                 return del(handToHandSkill);
 
             return (handToHandSkill / 10) + 1;
@@ -392,8 +424,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int CalculateHandToHandMaxDamage(int handToHandSkill)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("CalculateHandToHandMaxDamage", out del))
+            Func<int, int> del;
+            if (TryGetOverride("CalculateHandToHandMaxDamage", out del))
                 return del(handToHandSkill);
 
             // Daggerfall Chronicles table lists hand-to-hand skills of 80 and above (45 through 79 are omitted)
@@ -402,26 +434,98 @@ namespace DaggerfallWorkshop.Game.Formulas
             return (handToHandSkill / 5) + 1;
         }
 
+        public static int CalculateWeaponMinDamage(Weapons weapon)
+        {
+            Func<Weapons, int> del;
+            if (TryGetOverride("CalculateWeaponMinDamage", out del))
+                return del(weapon);
+
+            switch (weapon)
+            {
+                case Weapons.Dagger:
+                case Weapons.Tanto:
+                case Weapons.Wakazashi:
+                case Weapons.Shortsword:
+                case Weapons.Broadsword:
+                case Weapons.Staff:
+                case Weapons.Mace:
+                    return 1;
+                case Weapons.Longsword:
+                case Weapons.Claymore:
+                case Weapons.Battle_Axe:
+                case Weapons.War_Axe:
+                case Weapons.Flail:
+                    return 2;
+                case Weapons.Saber:
+                case Weapons.Katana:
+                case Weapons.Dai_Katana:
+                case Weapons.Warhammer:
+                    return 3;
+                case Weapons.Short_Bow:
+                case Weapons.Long_Bow:
+                    return 4;
+                default:
+                    return 0;
+            }
+        }
+
+        public static int CalculateWeaponMaxDamage(Weapons weapon)
+        {
+            Func<Weapons, int> del;
+            if (TryGetOverride("CalculateWeaponMaxDamage", out del))
+                return del(weapon);
+
+            switch (weapon)
+            {
+                case Weapons.Dagger:
+                    return 6;
+                case Weapons.Tanto:
+                case Weapons.Shortsword:
+                case Weapons.Staff:
+                    return 8;
+                case Weapons.Wakazashi:
+                    return 10;
+                case Weapons.Broadsword:
+                case Weapons.Saber:
+                case Weapons.Battle_Axe:
+                case Weapons.Mace:
+                    return 12;
+                case Weapons.Flail:
+                    return 14;
+                case Weapons.Longsword:
+                case Weapons.Katana:
+                case Weapons.War_Axe:
+                case Weapons.Short_Bow:
+                    return 16;
+                case Weapons.Claymore:
+                case Weapons.Warhammer:
+                case Weapons.Long_Bow:
+                    return 18;
+                case Weapons.Dai_Katana:
+                    return 21;
+                default:
+                    return 0;
+            }
+        }
+
         /// <summary>
         /// Calculate the damage caused by an attack.
         /// </summary>
         /// <param name="attacker">Attacking entity</param>
         /// <param name="target">Target entity</param>
-        /// <param name="enemyAnimStateRecord">Record # of the target, used for backstabbing</param>
+        /// <param name="isEnemyFacingAwayFromPlayer">Whether enemy is facing away from player, used for backstabbing</param>
         /// <param name="weaponAnimTime">Time the weapon animation lasted before the attack in ms, used for bow drawing </param>
         /// <param name="weapon">The weapon item being used</param>
-        /// <returns>Damage inflicted to target, can be 0</returns>
-        public static int CalculateAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, int enemyAnimStateRecord, int weaponAnimTime, DaggerfallUnityItem weapon)
+        /// <returns>Damage inflicted to target, can be 0 for a miss or ineffective hit</returns>
+        public static int CalculateAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, bool isEnemyFacingAwayFromPlayer, int weaponAnimTime, DaggerfallUnityItem weapon)
         {
             if (attacker == null || target == null)
                 return 0;
 
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("CalculateAttackDamage", out del))
-                return del(attacker, target, enemyAnimStateRecord, weaponAnimTime, weapon);
+            Func<DaggerfallEntity, DaggerfallEntity, bool, int, DaggerfallUnityItem, int> del;
+            if (TryGetOverride("CalculateAttackDamage", out del))
+                return del(attacker, target, isEnemyFacingAwayFromPlayer, weaponAnimTime, weapon);
 
-            int minBaseDamage = 0;
-            int maxBaseDamage = 0;
             int damageModifiers = 0;
             int damage = 0;
             int chanceToHitMod = 0;
@@ -438,8 +542,8 @@ namespace DaggerfallWorkshop.Game.Formulas
             EnemyEntity AIAttacker = attacker as EnemyEntity;
             if (AIAttacker != null && weapon != null)
             {
-                int weaponAverage = ((minBaseDamage + maxBaseDamage) / 2);
-                int noWeaponAverage = ((AIAttacker.MobileEnemy.MinDamage + AIAttacker.MobileEnemy.MaxDamage) / 2);
+                int weaponAverage = (weapon.GetBaseDamageMin() + weapon.GetBaseDamageMax()) / 2;
+                int noWeaponAverage = (AIAttacker.MobileEnemy.MinDamage + AIAttacker.MobileEnemy.MaxDamage) / 2;
 
                 if (noWeaponAverage > weaponAverage)
                 {
@@ -455,7 +559,7 @@ namespace DaggerfallWorkshop.Game.Formulas
                 {
                     if (attacker == player)
                     {
-                        DaggerfallUI.Instance.PopupMessage(UserInterfaceWindows.HardStrings.materialIneffective);
+                        DaggerfallUI.Instance.PopupMessage(TextManager.Instance.GetLocalizedText("materialIneffective"));
                     }
                     return 0;
                 }
@@ -471,75 +575,22 @@ namespace DaggerfallWorkshop.Game.Formulas
 
             if (attacker == player)
             {
-                // Apply swing modifiers.
-                FPSWeapon onscreenWeapon = GameManager.Instance.WeaponManager.ScreenWeapon;
+                // Apply swing modifiers
+                ToHitAndDamageMods swingMods = CalculateSwingModifiers(GameManager.Instance.WeaponManager.ScreenWeapon);
+                damageModifiers += swingMods.damageMod;
+                chanceToHitMod += swingMods.toHitMod;
 
-                if (onscreenWeapon != null)
-                {
-                    // The Daggerfall manual groups diagonal slashes to the left and right as if they are the same, but they are different.
-                    // Classic does not apply swing modifiers to unarmed attacks.
-                    if (onscreenWeapon.WeaponState == WeaponStates.StrikeUp)
-                    {
-                        damageModifiers += -4;
-                        chanceToHitMod += 10;
-                    }
-                    if (onscreenWeapon.WeaponState == WeaponStates.StrikeDownRight)
-                    {
-                        damageModifiers += -2;
-                        chanceToHitMod += 5;
-                    }
-                    if (onscreenWeapon.WeaponState == WeaponStates.StrikeDownLeft)
-                    {
-                        damageModifiers += 2;
-                        chanceToHitMod += -5;
-                    }
-                    if (onscreenWeapon.WeaponState == WeaponStates.StrikeDown)
-                    {
-                        damageModifiers += 4;
-                        chanceToHitMod += -10;
-                    }
-                }
-
-                if (weapon != null)
-                {
-                    // Apply weapon proficiency
-                    if (((int)attacker.Career.ExpertProficiencies & weapon.GetWeaponSkillUsed()) != 0)
-                    {
-                        damageModifiers += ((attacker.Level / 3) + 1);
-                        chanceToHitMod += attacker.Level;
-                    }
-                }
-                // Apply hand-to-hand proficiency. Hand-to-hand proficiency is not applied in classic.
-                else if (((int)attacker.Career.ExpertProficiencies & (int)(DFCareer.ProficiencyFlags.HandToHand)) != 0)
-                {
-                    damageModifiers += ((attacker.Level / 3) + 1);
-                    chanceToHitMod += attacker.Level;
-                }
+                // Apply proficiency modifiers
+                ToHitAndDamageMods proficiencyMods = CalculateProficiencyModifiers(attacker, weapon);
+                damageModifiers += proficiencyMods.damageMod;
+                chanceToHitMod += proficiencyMods.toHitMod;
 
                 // Apply racial bonuses
-                if (weapon != null)
-                {
-                    if (player.RaceTemplate.ID == (int)Races.DarkElf)
-                    {
-                        damageModifiers += (attacker.Level / 4);
-                        chanceToHitMod += (attacker.Level / 4);
-                    }
-                    else if (skillID == (short)DFCareer.Skills.Archery)
-                    {
-                        if (player.RaceTemplate.ID == (int)Races.WoodElf)
-                        {
-                            damageModifiers += (attacker.Level / 3);
-                            chanceToHitMod += (attacker.Level / 3);
-                        }
-                    }
-                    else if (player.RaceTemplate.ID == (int)Races.Redguard)
-                    {
-                        damageModifiers += (attacker.Level / 3);
-                        chanceToHitMod += (attacker.Level / 3);
-                    }
-                }
+                ToHitAndDamageMods racialMods = CalculateRacialModifiers(attacker, weapon, player);
+                damageModifiers += racialMods.damageMod;
+                chanceToHitMod += racialMods.toHitMod;
 
-                backstabChance = CalculateBackstabChance(player, null, enemyAnimStateRecord);
+                backstabChance = CalculateBackstabChance(player, null, isEnemyFacingAwayFromPlayer);
                 chanceToHitMod += backstabChance;
             }
 
@@ -551,24 +602,18 @@ namespace DaggerfallWorkshop.Game.Formulas
             {
                 if (attacker == player || (AIAttacker != null && AIAttacker.EntityType == EntityTypes.EnemyClass))
                 {
-                    if (CalculateSuccessfulHit(attacker, target, chanceToHitMod, struckBodyPart) > 0)
+                    if (CalculateSuccessfulHit(attacker, target, chanceToHitMod, struckBodyPart))
                     {
-                        minBaseDamage = CalculateHandToHandMinDamage(attacker.Skills.GetLiveSkillValue(DFCareer.Skills.HandToHand));
-                        maxBaseDamage = CalculateHandToHandMaxDamage(attacker.Skills.GetLiveSkillValue(DFCareer.Skills.HandToHand));
-                        damage = UnityEngine.Random.Range(minBaseDamage, maxBaseDamage + 1);
+                        damage = CalculateHandToHandAttackDamage(attacker, target, damageModifiers, attacker == player);
 
-                        // Apply damage modifiers.
-                        damage += damageModifiers;
-                        // Apply strength modifier. It is not applied in classic despite what the in-game description for the Strength attribute says.
-                        if (attacker == player)
-                            damage += DamageModifier(attacker.Stats.LiveStrength);
-                        // Handle backstabbing
                         damage = CalculateBackstabDamage(damage, backstabChance);
                     }
                 }
-                else if (AIAttacker != null) // attacker is monster
+                else if (AIAttacker != null) // attacker is a monster
                 {
                     // Handle multiple attacks by AI
+                    int minBaseDamage = 0;
+                    int maxBaseDamage = 0;
                     int attackNumber = 0;
                     while (attackNumber < 3) // Classic supports up to 5 attacks but no monster has more than 3
                     {
@@ -590,15 +635,21 @@ namespace DaggerfallWorkshop.Game.Formulas
 
                         int reflexesChance = 50 - (10 * ((int)player.Reflexes - 2));
 
-                        if (DFRandom.rand() % 100 < reflexesChance && minBaseDamage > 0 && CalculateSuccessfulHit(attacker, target, chanceToHitMod, struckBodyPart) > 0)
+                        int hitDamage = 0;
+                        if (DFRandom.rand() % 100 < reflexesChance && minBaseDamage > 0 && CalculateSuccessfulHit(attacker, target, chanceToHitMod, struckBodyPart))
                         {
-                            int hitDamage = UnityEngine.Random.Range(minBaseDamage, maxBaseDamage + 1);
+                            hitDamage = UnityEngine.Random.Range(minBaseDamage, maxBaseDamage + 1);
                             // Apply special monster attack effects
                             if (hitDamage > 0)
                                 OnMonsterHit(AIAttacker, target, hitDamage);
 
                             damage += hitDamage;
                         }
+
+                        // Apply bonus damage only when monster has actually hit, or they will accumulate bonus damage even for missed attacks and zero-damage attacks
+                        if (hitDamage > 0)
+                            damage += GetBonusOrPenaltyByEnemyType(attacker, target);
+
                         ++attackNumber;
                     }
                 }
@@ -607,14 +658,12 @@ namespace DaggerfallWorkshop.Game.Formulas
             else if (weapon != null)
             {
                 // Apply weapon material modifier.
-                if (weapon.GetWeaponMaterialModifier() > 0)
-                {
-                    chanceToHitMod += (weapon.GetWeaponMaterialModifier() * 10);
-                }
-                // Mod hook for adjusting final hit chance mod. (is a no-op in DFU)
+                chanceToHitMod += CalculateWeaponToHit(weapon);
+
+                // Mod hook for adjusting final hit chance mod and adding new elements to calculation. (no-op in DFU)
                 chanceToHitMod = AdjustWeaponHitChanceMod(attacker, target, chanceToHitMod, weaponAnimTime, weapon);
 
-                if (CalculateSuccessfulHit(attacker, target, chanceToHitMod, struckBodyPart) > 0)
+                if (CalculateSuccessfulHit(attacker, target, chanceToHitMod, struckBodyPart))
                 {
                     damage = CalculateWeaponAttackDamage(attacker, target, damageModifiers, weaponAnimTime, weapon);
 
@@ -640,9 +689,7 @@ namespace DaggerfallWorkshop.Game.Formulas
                 DaggerfallUnityItem item = null;
                 if (equippedItems.Length != 0)
                 {
-                    item = IsRingOfNamira(equippedItems[(int)EquipSlots.Ring0]) ? equippedItems[(int)EquipSlots.Ring0] : equippedItems[(int)EquipSlots.Ring1];
-                    item = IsRingOfNamira(item) ? item : null;
-                    if (item != null)
+                    if (IsRingOfNamira(equippedItems[(int)EquipSlots.Ring0]) || IsRingOfNamira(equippedItems[(int)EquipSlots.Ring1]))
                     {
                         IEntityEffect effectTemplate = GameManager.Instance.EntityEffectBroker.GetEffectTemplate(RingOfNamiraEffect.EffectKey);
                         effectTemplate.EnchantmentPayloadCallback(EnchantmentPayloadFlags.None,
@@ -662,60 +709,17 @@ namespace DaggerfallWorkshop.Game.Formulas
             return item != null && item.ContainsEnchantment(DaggerfallConnect.FallExe.EnchantmentTypes.SpecialArtifactEffect, (int)ArtifactsSubTypes.Ring_of_Namira);
         }
 
-        private static int CalculateStruckBodyPart()
+        public static int CalculateWeaponAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, int damageModifier, int weaponAnimTime, DaggerfallUnityItem weapon)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("CalculateStruckBodyPart", out del))
-                return del(0);
-
-            int[] bodyParts = { 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 6 };
-            return bodyParts[UnityEngine.Random.Range(0, bodyParts.Length)];
-        }
-
-        private static int CalculateBackstabChance(PlayerEntity player, DaggerfallEntity target, int enemyAnimStateRecord)
-        {
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("CalculateBackstabChance", out del))
-                return del(player, null, enemyAnimStateRecord);
-
-            // If enemy is facing away from player
-            if (enemyAnimStateRecord % 5 > 2)
-            {
-                player.TallySkill(DFCareer.Skills.Backstabbing, 1);
-                return player.Skills.GetLiveSkillValue(DFCareer.Skills.Backstabbing);
-            }
-            else
-                return 0;
-        }
-
-        private static int CalculateBackstabDamage(int damage, int backstabbingLevel)
-        {
-            Formula_2i del;
-            if (formula_2i.TryGetValue("CalculateBackstabDamage", out del))
-                return del(damage, backstabbingLevel);
-
-            if (backstabbingLevel > 1 && Dice100.SuccessRoll(backstabbingLevel))
-            {
-                damage *= 3;
-                string backstabMessage = UserInterfaceWindows.HardStrings.successfulBackstab;
-                DaggerfallUI.Instance.PopupMessage(backstabMessage);
-            }
-            return damage;
-        }
-
-        private static int CalculateWeaponAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, int damageModifier, int weaponAnimTime, DaggerfallUnityItem weapon)
-        {
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("CalculateWeaponAttackDamage", out del))
+            Func<DaggerfallEntity, DaggerfallEntity, int, int, DaggerfallUnityItem, int> del;
+            if (TryGetOverride("CalculateWeaponAttackDamage", out del))
                 return del(attacker, target, damageModifier, weaponAnimTime, weapon);
 
             int damage = UnityEngine.Random.Range(weapon.GetBaseDamageMin(), weapon.GetBaseDamageMax() + 1) + damageModifier;
 
-            EnemyEntity AITarget = null;
             if (target != GameManager.Instance.PlayerEntity)
             {
-                AITarget = target as EnemyEntity;
-                if (AITarget.CareerIndex == (int)MonsterCareers.SkeletalWarrior)
+                if ((target as EnemyEntity).CareerIndex == (int)MonsterCareers.SkeletalWarrior)
                 {
                     // Apply edged-weapon damage modifier for Skeletal Warrior
                     if ((weapon.flags & 0x10) == 0)
@@ -738,41 +742,328 @@ namespace DaggerfallWorkshop.Game.Formulas
             if (damage < 1)
                 damage = 0;
 
-            damage += GetBonusOrPenaltyByEnemyType(attacker, AITarget);
+            damage += GetBonusOrPenaltyByEnemyType(attacker, target);
 
-            // Mod hook for adjusting final damage. (is a no-op in DFU)
+            // Mod hook for adjusting final weapon damage. (no-op in DFU)
             damage = AdjustWeaponAttackDamage(attacker, target, damage, weaponAnimTime, weapon);
 
             return damage;
         }
 
-        private static int AdjustWeaponHitChanceMod(DaggerfallEntity attacker, DaggerfallEntity target, int hitChanceMod, int weaponAnimTime, DaggerfallUnityItem weapon)
+        public static int CalculateHandToHandAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, int damageModifier, bool player)
         {
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("AdjustWeaponHitChanceMod", out del))
+            Func<DaggerfallEntity, DaggerfallEntity, int, int> del;
+            if (TryGetOverride("CalculateHandToHandAttackDamage", out del))
+                return del(attacker, target, damageModifier);
+
+            int minBaseDamage = CalculateHandToHandMinDamage(attacker.Skills.GetLiveSkillValue(DFCareer.Skills.HandToHand));
+            int maxBaseDamage = CalculateHandToHandMaxDamage(attacker.Skills.GetLiveSkillValue(DFCareer.Skills.HandToHand));
+            int damage = UnityEngine.Random.Range(minBaseDamage, maxBaseDamage + 1);
+
+            // Apply damage modifiers.
+            damage += damageModifier;
+
+            // Apply strength modifier for players. It is not applied in classic despite what the in-game description for the Strength attribute says.
+            if (player)
+                damage += DamageModifier(attacker.Stats.LiveStrength);
+
+            damage += GetBonusOrPenaltyByEnemyType(attacker, target);
+
+            return damage;
+        }
+
+        /// <summary>
+        /// Calculates whether an attack on a target is successful or not.
+        /// </summary>
+        public static bool CalculateSuccessfulHit(DaggerfallEntity attacker, DaggerfallEntity target, int chanceToHitMod, int struckBodyPart)
+        {
+            if (attacker == null || target == null)
+                return false;
+
+            Func<DaggerfallEntity, DaggerfallEntity, int, int, bool> del;
+            if (TryGetOverride("CalculateSuccessfulHit", out del))
+                return del(attacker, target, chanceToHitMod, struckBodyPart);
+
+            int chanceToHit = chanceToHitMod;
+
+            // Get armor value for struck body part
+            chanceToHit += CalculateArmorToHit(target, struckBodyPart);
+
+            // Apply adrenaline rush modifiers.
+            chanceToHit += CalculateAdrenalineRushToHit(attacker, target);
+
+            // Apply enchantment modifier
+            chanceToHit += attacker.ChanceToHitModifier;
+
+            // Apply stat differential modifiers. (default: luck and agility)
+            chanceToHit += CalculateStatsToHit(attacker, target);
+
+            // Apply skill modifiers. (default: dodge and crit strike)
+            chanceToHit += CalculateSkillsToHit(attacker, target);
+
+            // Apply monster modifier and biography adjustments.
+            chanceToHit += CalculateAdjustmentsToHit(attacker, target);
+
+            Mathf.Clamp(chanceToHit, 3, 97);
+
+            return Dice100.SuccessRoll(chanceToHit);
+        }
+
+        public static float GetMeleeWeaponAnimTime(PlayerEntity player, WeaponTypes weaponType, ItemHands weaponHands)
+        {
+            Func<PlayerEntity, WeaponTypes, ItemHands, float> del;
+            if (TryGetOverride("GetMeleeWeaponAnimTime", out del))
+                return del(player, weaponType, weaponHands);
+
+            float speed = 3 * (115 - player.Stats.LiveSpeed);
+            return speed / classicFrameUpdate;
+        }
+
+        public static float GetBowCooldownTime(PlayerEntity player)
+        {
+            Func<PlayerEntity, float> del;
+            if (TryGetOverride("GetBowCooldownTime", out del))
+                return del(player);
+
+            float cooldown = 10 * (100 - player.Stats.LiveSpeed) + 800;
+            return cooldown / classicFrameUpdate;
+        }
+
+        #endregion
+
+        #region Combat & Damage: component sub-formula
+
+        public static int CalculateStruckBodyPart()
+        {
+            Func<int> del;
+            if (TryGetOverride("CalculateStruckBodyPart", out del))
+                return del();
+
+            int[] bodyParts = { 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 6 };
+            return bodyParts[UnityEngine.Random.Range(0, bodyParts.Length)];
+        }
+
+        public static ToHitAndDamageMods CalculateSwingModifiers(FPSWeapon onscreenWeapon)
+        {
+            Func<FPSWeapon, ToHitAndDamageMods> del;
+            if (TryGetOverride("CalculateSwingModifiers", out del))
+                return del(onscreenWeapon);
+
+            ToHitAndDamageMods mods = new ToHitAndDamageMods();
+            if (onscreenWeapon != null)
+            {
+                // The Daggerfall manual groups diagonal slashes to the left and right as if they are the same, but they are different.
+                // Classic does not apply swing modifiers to unarmed attacks.
+                if (onscreenWeapon.WeaponState == WeaponStates.StrikeUp)
+                {
+                    mods.damageMod = -4;
+                    mods.toHitMod = 10;
+                }
+                if (onscreenWeapon.WeaponState == WeaponStates.StrikeDownRight)
+                {
+                    mods.damageMod = -2;
+                    mods.toHitMod = 5;
+                }
+                if (onscreenWeapon.WeaponState == WeaponStates.StrikeDownLeft)
+                {
+                    mods.damageMod = 2;
+                    mods.toHitMod = -5;
+                }
+                if (onscreenWeapon.WeaponState == WeaponStates.StrikeDown)
+                {
+                    mods.damageMod = 4;
+                    mods.toHitMod = -10;
+                }
+            }
+            return mods;
+        }
+
+        public static ToHitAndDamageMods CalculateProficiencyModifiers(DaggerfallEntity attacker, DaggerfallUnityItem weapon)
+        {
+            Func<DaggerfallEntity, DaggerfallUnityItem, ToHitAndDamageMods> del;
+            if (TryGetOverride("CalculateProficiencyModifiers", out del))
+                return del(attacker, weapon);
+
+            ToHitAndDamageMods mods = new ToHitAndDamageMods();
+            if (weapon != null)
+            {
+                // Apply weapon proficiency
+                if (((int)attacker.Career.ExpertProficiencies & weapon.GetWeaponSkillUsed()) != 0)
+                {
+                    mods.damageMod = (attacker.Level / 3) + 1;
+                    mods.toHitMod = attacker.Level;
+                }
+            }
+            // Apply hand-to-hand proficiency. Hand-to-hand proficiency is not applied in classic.
+            else if (((int)attacker.Career.ExpertProficiencies & (int)DFCareer.ProficiencyFlags.HandToHand) != 0)
+            {
+                mods.damageMod = (attacker.Level / 3) + 1;
+                mods.toHitMod = attacker.Level;
+            }
+            return mods;
+        }
+
+        public static ToHitAndDamageMods CalculateRacialModifiers(DaggerfallEntity attacker, DaggerfallUnityItem weapon, PlayerEntity player)
+        {
+            Func<DaggerfallEntity, DaggerfallUnityItem, PlayerEntity, ToHitAndDamageMods> del;
+            if (TryGetOverride("CalculateRacialModifiers", out del))
+                return del(attacker, weapon, player);
+
+            ToHitAndDamageMods mods = new ToHitAndDamageMods();
+            if (weapon != null)
+            {
+                if (player.RaceTemplate.ID == (int)Races.DarkElf)
+                {
+                    mods.damageMod = attacker.Level / 4;
+                    mods.toHitMod = attacker.Level / 4;
+                }
+                else if (weapon.GetWeaponSkillIDAsShort() == (short)DFCareer.Skills.Archery)
+                {
+                    if (player.RaceTemplate.ID == (int)Races.WoodElf)
+                    {
+                        mods.damageMod = attacker.Level / 3;
+                        mods.toHitMod = attacker.Level / 3;
+                    }
+                }
+                else if (player.RaceTemplate.ID == (int)Races.Redguard)
+                {
+                    mods.damageMod = attacker.Level / 3;
+                    mods.toHitMod = attacker.Level / 3;
+                }
+            }
+            return mods;
+        }
+
+        public static int CalculateBackstabChance(PlayerEntity player, DaggerfallEntity target, bool isEnemyFacingAwayFromPlayer)
+        {
+            Func<PlayerEntity, DaggerfallEntity, bool, int> del;
+            if (TryGetOverride("CalculateBackstabChance", out del))
+                return del(player, target, isEnemyFacingAwayFromPlayer);
+
+            if (isEnemyFacingAwayFromPlayer)
+            {
+                player.TallySkill(DFCareer.Skills.Backstabbing, 1);
+                return player.Skills.GetLiveSkillValue(DFCareer.Skills.Backstabbing);
+            }
+            return 0;
+        }
+
+        public static int CalculateBackstabDamage(int damage, int backstabbingLevel)
+        {
+            Func<int, int, int> del;
+            if (TryGetOverride("CalculateBackstabDamage", out del))
+                return del(damage, backstabbingLevel);
+
+            if (backstabbingLevel > 1 && Dice100.SuccessRoll(backstabbingLevel))
+            {
+                damage *= 3;
+                string backstabMessage = TextManager.Instance.GetLocalizedText("successfulBackstab");
+                DaggerfallUI.Instance.PopupMessage(backstabMessage);
+            }
+            return damage;
+        }
+
+        public static int GetBonusOrPenaltyByEnemyType(DaggerfallEntity attacker, DaggerfallEntity target)
+        {
+            Func<DaggerfallEntity, DaggerfallEntity, int> del;
+            if (TryGetOverride("GetBonusOrPenaltyByEnemyType", out del))
+                return del(attacker, target);
+
+            if (attacker == null || target == null)
+                return 0;
+
+            int damage = 0;
+            // Apply bonus or penalty by opponent type.
+            // In classic this is broken and only works if the attack is done with a weapon that has the maximum number of enchantments.
+            if (target is EnemyEntity)
+            {
+                var enemyTarget = target as EnemyEntity;
+                if (enemyTarget.MobileEnemy.Affinity == MobileAffinity.Human)
+                {
+                    if (((int)attacker.Career.HumanoidAttackModifier & (int)DFCareer.AttackModifier.Bonus) != 0)
+                        damage += attacker.Level;
+                    if (((int)attacker.Career.HumanoidAttackModifier & (int)DFCareer.AttackModifier.Phobia) != 0)
+                        damage -= attacker.Level;
+                }
+                else if (enemyTarget.GetEnemyGroup() == DFCareer.EnemyGroups.Undead)
+                {
+                    if (((int)attacker.Career.UndeadAttackModifier & (int)DFCareer.AttackModifier.Bonus) != 0)
+                        damage += attacker.Level;
+                    if (((int)attacker.Career.UndeadAttackModifier & (int)DFCareer.AttackModifier.Phobia) != 0)
+                        damage -= attacker.Level;
+                }
+                else if (enemyTarget.GetEnemyGroup() == DFCareer.EnemyGroups.Daedra)
+                {
+                    if (((int)attacker.Career.DaedraAttackModifier & (int)DFCareer.AttackModifier.Bonus) != 0)
+                        damage += attacker.Level;
+                    if (((int)attacker.Career.DaedraAttackModifier & (int)DFCareer.AttackModifier.Phobia) != 0)
+                        damage -= attacker.Level;
+                }
+                else if (enemyTarget.GetEnemyGroup() == DFCareer.EnemyGroups.Animals)
+                {
+                    if (((int)attacker.Career.AnimalsAttackModifier & (int)DFCareer.AttackModifier.Bonus) != 0)
+                        damage += attacker.Level;
+                    if (((int)attacker.Career.AnimalsAttackModifier & (int)DFCareer.AttackModifier.Phobia) != 0)
+                        damage -= attacker.Level;
+                }
+            }
+            else if (target is PlayerEntity)
+            {
+                if (GameManager.Instance.PlayerEffectManager.HasVampirism()) // Vampires are undead, therefore use undead modifier
+                {
+                    if (((int)attacker.Career.UndeadAttackModifier & (int)DFCareer.AttackModifier.Bonus) != 0)
+                        damage += attacker.Level;
+                    if (((int)attacker.Career.UndeadAttackModifier & (int)DFCareer.AttackModifier.Phobia) != 0)
+                        damage -= attacker.Level;
+                }
+                else
+                {
+                    // Player is assumed humanoid
+                    if (((int)attacker.Career.HumanoidAttackModifier & (int)DFCareer.AttackModifier.Bonus) != 0)
+                        damage += attacker.Level;
+                    if (((int)attacker.Career.HumanoidAttackModifier & (int)DFCareer.AttackModifier.Phobia) != 0)
+                        damage -= attacker.Level;
+                }
+            }
+
+            return damage;
+        }
+
+        public static int AdjustWeaponHitChanceMod(DaggerfallEntity attacker, DaggerfallEntity target, int hitChanceMod, int weaponAnimTime, DaggerfallUnityItem weapon)
+        {
+            Func<DaggerfallEntity, DaggerfallEntity, int, int, DaggerfallUnityItem, int> del;
+            if (TryGetOverride("AdjustWeaponHitChanceMod", out del))
                 return del(attacker, target, hitChanceMod, weaponAnimTime, weapon);
 
             return hitChanceMod;
         }
 
-        private static int AdjustWeaponAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, int damage, int weaponAnimTime, DaggerfallUnityItem weapon)
+        public static int AdjustWeaponAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, int damage, int weaponAnimTime, DaggerfallUnityItem weapon)
         {
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("AdjustWeaponAttackDamage", out del))
+            Func<DaggerfallEntity, DaggerfallEntity, int, int, DaggerfallUnityItem, int> del;
+            if (TryGetOverride("AdjustWeaponAttackDamage", out del))
                 return del(attacker, target, damage, weaponAnimTime, weapon);
 
             return damage;
         }
 
-        private static void DamageEquipment(DaggerfallEntity attacker, DaggerfallEntity target, int damage, DaggerfallUnityItem weapon, int struckBodyPart)
+        /// <summary>
+        /// Allocate any equipment damage from a strike, and reduce item condition.
+        /// </summary>
+        public static void DamageEquipment(DaggerfallEntity attacker, DaggerfallEntity target, int damage, DaggerfallUnityItem weapon, int struckBodyPart)
         {
+            Func<DaggerfallEntity, DaggerfallEntity, int, DaggerfallUnityItem, int, bool> del;
+            if (TryGetOverride("DamageEquipment", out del))
+                if (del(attacker, target, damage, weapon, struckBodyPart))
+                    return; // Only return if override returns true
+
             // If damage was done by a weapon, damage the weapon and armor of the hit body part.
             // In classic, shields are never damaged, only armor specific to the hitbody part is.
             // Here, if an equipped shield covers the hit body part, it takes damage instead.
             if (weapon != null && damage > 0)
             {
                 // TODO: If attacker is AI, apply Ring of Namira effect
-                weapon.DamageThroughPhysicalHit(damage, attacker);
+                ApplyConditionDamageThroughPhysicalHit(weapon, attacker, damage);
 
                 DaggerfallUnityItem shield = target.ItemEquipTable.GetItem(EquipSlots.LeftHand);
                 bool shieldTakesDamage = false;
@@ -788,19 +1079,163 @@ namespace DaggerfallWorkshop.Game.Formulas
                 }
 
                 if (shieldTakesDamage)
-                    shield.DamageThroughPhysicalHit(damage, target);
+                    ApplyConditionDamageThroughPhysicalHit(shield, target, damage);
                 else
                 {
                     EquipSlots hitSlot = DaggerfallUnityItem.GetEquipSlotForBodyPart((BodyParts)struckBodyPart);
                     DaggerfallUnityItem armor = target.ItemEquipTable.GetItem(hitSlot);
                     if (armor != null)
-                        armor.DamageThroughPhysicalHit(damage, target);
+                        ApplyConditionDamageThroughPhysicalHit(armor, target, damage);
                 }
             }
         }
 
+        /// <summary>
+        /// Applies condition damage to an item based on physical hit damage.
+        /// </summary>
+        public static void ApplyConditionDamageThroughPhysicalHit(DaggerfallUnityItem item, DaggerfallEntity owner, int damage)
+        {
+            Func<DaggerfallUnityItem, DaggerfallEntity, int, bool> del;
+            if (TryGetOverride("ApplyConditionDamageThroughPhysicalHit", out del))
+                if (del(item, owner, damage))
+                    return; // Only return if override returns true
+
+            int amount = (10 * damage + 50) / 100;
+            if ((amount == 0) && Dice100.SuccessRoll(20))
+                amount = 1;
+
+            item.LowerCondition(amount, owner);
+        }
+
+        public static int CalculateWeaponToHit(DaggerfallUnityItem weapon)
+        {
+            Func<DaggerfallUnityItem, int> del;
+            if (TryGetOverride("CalculateWeaponToHit", out del))
+                return del(weapon);
+
+            return weapon.GetWeaponMaterialModifier() * 10;
+        }
+
+        public static int CalculateArmorToHit(DaggerfallEntity target, int struckBodyPart)
+        {
+            Func<DaggerfallEntity, int, int> del;
+            if (TryGetOverride("CalculateArmorToHit", out del))
+                return del(target, struckBodyPart);
+
+            int armorValue = 0;
+            if (struckBodyPart <= target.ArmorValues.Length)
+            {
+                armorValue = target.ArmorValues[struckBodyPart] + target.IncreasedArmorValueModifier + target.DecreasedArmorValueModifier;
+            }
+            return armorValue;
+        }
+
+        public static int CalculateAdrenalineRushToHit(DaggerfallEntity attacker, DaggerfallEntity target)
+        {
+            Func<DaggerfallEntity, DaggerfallEntity, int> del;
+            if (TryGetOverride("CalculateAdrenalineRushToHit", out del))
+                return del(attacker, target);
+
+            const int adrenalineRushModifier = 5;
+            const int improvedAdrenalineRushModifier = 8;
+
+            int chanceToHitMod = 0;
+            if (attacker.Career.AdrenalineRush && attacker.CurrentHealth < (attacker.MaxHealth / 8))
+            {
+                chanceToHitMod += (attacker.ImprovedAdrenalineRush) ? improvedAdrenalineRushModifier : adrenalineRushModifier;
+            }
+
+            if (target.Career.AdrenalineRush && target.CurrentHealth < (target.MaxHealth / 8))
+            {
+                chanceToHitMod -= (target.ImprovedAdrenalineRush) ? improvedAdrenalineRushModifier : adrenalineRushModifier;
+            }
+            return chanceToHitMod;
+        }
+
+        public static int CalculateStatsToHit(DaggerfallEntity attacker, DaggerfallEntity target)
+        {
+            Func<DaggerfallEntity, DaggerfallEntity, int> del;
+            if (TryGetOverride("CalculateStatDiffsToHit", out del))
+                return del(attacker, target);
+
+            int chanceToHitMod = 0;
+
+            // Apply luck modifier.
+            chanceToHitMod += (attacker.Stats.LiveLuck - target.Stats.LiveLuck) / 10;
+
+            // Apply agility modifier.
+            chanceToHitMod += (attacker.Stats.LiveAgility - target.Stats.LiveAgility) / 10;
+
+            return chanceToHitMod;
+        }
+
+        public static int CalculateSkillsToHit(DaggerfallEntity attacker, DaggerfallEntity target)
+        {
+            Func<DaggerfallEntity, DaggerfallEntity, int> del;
+            if (TryGetOverride("CalculateSkillsToHit", out del))
+                return del(attacker, target);
+
+            int chanceToHitMod = 0;
+
+            // Apply dodging modifier.
+            // This modifier is bugged in classic and the attacker's dodging skill is used rather than the target's.
+            // DF Chronicles says the dodging calculation is (dodging / 10), but it actually seems to be (dodging / 4).
+            chanceToHitMod -= target.Skills.GetLiveSkillValue(DFCareer.Skills.Dodging) / 4;
+
+            // Apply critical strike modifier.
+            if (Dice100.SuccessRoll(attacker.Skills.GetLiveSkillValue(DFCareer.Skills.CriticalStrike)))
+            {
+                chanceToHitMod += attacker.Skills.GetLiveSkillValue(DFCareer.Skills.CriticalStrike) / 10;
+            }
+
+            return chanceToHitMod;
+        }
+
+        public static int CalculateAdjustmentsToHit(DaggerfallEntity attacker, DaggerfallEntity target)
+        {
+            Func<DaggerfallEntity, DaggerfallEntity, int> del;
+            if (TryGetOverride("CalculateAdjustmentsToHit", out del))
+                return del(attacker, target);
+
+            PlayerEntity player = GameManager.Instance.PlayerEntity;
+            EnemyEntity AITarget = target as EnemyEntity;
+
+            int chanceToHitMod = 0;
+
+            // Apply hit mod from character biography
+            if (target == player)
+            {
+                chanceToHitMod -= player.BiographyAvoidHitMod;
+            }
+
+            // Apply monster modifier.
+            if ((target != player) && (AITarget.EntityType == EntityTypes.EnemyMonster))
+            {
+                chanceToHitMod += 40;
+            }
+
+            // DF Chronicles says -60 is applied at the end, but it actually seems to be -50.
+            chanceToHitMod -= 50;
+
+            return chanceToHitMod;
+        }
+
+        #endregion
+
+        #region Effects and Resistances
+
+        /// <summary>
+        /// Execute special monster attack effects.
+        /// </summary>
+        /// <param name="attacker">Attacking entity</param>
+        /// <param name="target">Target entity</param>
+        /// <param name="damage">Damage done by the hit</param>
         public static void OnMonsterHit(EnemyEntity attacker, DaggerfallEntity target, int damage)
         {
+            Func<EnemyEntity, DaggerfallEntity, int, bool> del;
+            if (TryGetOverride("OnMonsterHit", out del))
+                del(attacker, target, damage);
+
             byte[] diseaseListA = { 1 };
             byte[] diseaseListB = { 1, 3, 5 };
             byte[] diseaseListC = { 1, 2, 3, 4, 5, 6, 8, 9, 11, 13, 14 };
@@ -889,149 +1324,6 @@ namespace DaggerfallWorkshop.Game.Formulas
             }
         }
 
-        /// <summary>
-        /// Calculates whether an attack on a target is successful. Returns 1 on success and 0 otherwise.
-        /// (uses an int instead of bool to fit common override signature)
-        /// </summary>
-        public static int CalculateSuccessfulHit(DaggerfallEntity attacker, DaggerfallEntity target, int chanceToHitMod, int struckBodyPart)
-        {
-            if (attacker == null || target == null)
-                return 0;
-
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("CalculateSuccessfulHit", out del))
-                return del(attacker, target, chanceToHitMod, struckBodyPart);
-
-            int chanceToHit = chanceToHitMod;
-            PlayerEntity player = GameManager.Instance.PlayerEntity;
-            EnemyEntity AITarget = target as EnemyEntity;
-
-            int armorValue = 0;
-
-            // Apply hit mod from character biography
-            if (target == player)
-            {
-                chanceToHit -= player.BiographyAvoidHitMod;
-            }
-
-            // Get armor value for struck body part
-            if (struckBodyPart <= target.ArmorValues.Length)
-            {
-                armorValue = target.ArmorValues[struckBodyPart] + target.IncreasedArmorValueModifier + target.DecreasedArmorValueModifier;
-            }
-
-            chanceToHit += armorValue;
-
-            // Apply adrenaline rush modifiers.
-            const int adrenalineRushModifier = 5;
-            const int improvedAdrenalineRushModifier = 8;
-            if (attacker.Career.AdrenalineRush && attacker.CurrentHealth < (attacker.MaxHealth / 8))
-            {
-                chanceToHit += (attacker.ImprovedAdrenalineRush) ? improvedAdrenalineRushModifier : adrenalineRushModifier;
-            }
-
-            if (target.Career.AdrenalineRush && target.CurrentHealth < (target.MaxHealth / 8))
-            {
-                chanceToHit -= (target.ImprovedAdrenalineRush) ? improvedAdrenalineRushModifier : adrenalineRushModifier;
-            }
-
-            // Apply enchantment modifier
-            chanceToHit += attacker.ChanceToHitModifier;
-
-            // Apply luck modifier.
-            chanceToHit += ((attacker.Stats.LiveLuck - target.Stats.LiveLuck) / 10);
-
-            // Apply agility modifier.
-            chanceToHit += ((attacker.Stats.LiveAgility - target.Stats.LiveAgility) / 10);
-
-            // Apply dodging modifier.
-            // This modifier is bugged in classic and the attacker's dodging skill is used rather than the target's.
-            // DF Chronicles says the dodging calculation is (dodging / 10), but it actually seems to be (dodging / 4).
-            chanceToHit -= (target.Skills.GetLiveSkillValue(DFCareer.Skills.Dodging) / 4);
-
-            // Apply critical strike modifier.
-            if (Dice100.SuccessRoll(attacker.Skills.GetLiveSkillValue(DFCareer.Skills.CriticalStrike)))
-            {
-                chanceToHit += (attacker.Skills.GetLiveSkillValue(DFCareer.Skills.CriticalStrike) / 10);
-            }
-
-            // Apply monster modifier.
-            if ((target != player) && (AITarget.EntityType == EntityTypes.EnemyMonster))
-            {
-                chanceToHit += 40;
-            }
-
-            // DF Chronicles says -60 is applied at the end, but it actually seems to be -50.
-            chanceToHit -= 50;
-
-            Mathf.Clamp(chanceToHit, 3, 97);
-
-            if (Dice100.SuccessRoll(chanceToHit))
-                return 1;
-            else
-                return 0;
-        }
-
-        static int GetBonusOrPenaltyByEnemyType(DaggerfallEntity attacker, EnemyEntity AITarget)
-        {
-            Formula_2de_2i del;
-            if (formula_2de_2i.TryGetValue("GetBonusOrPenaltyByEnemyType", out del))
-                return del(attacker, AITarget);
-
-            if (attacker == null || AITarget == null)
-                return 0;
-
-            int damage = 0;
-            // Apply bonus or penalty by opponent type.
-            // In classic this is broken and only works if the attack is done with a weapon that has the maximum number of enchantments.
-            if (AITarget.GetEnemyGroup() == DFCareer.EnemyGroups.Undead)
-            {
-                if (((int)attacker.Career.UndeadAttackModifier & (int)DFCareer.AttackModifier.Bonus) != 0)
-                {
-                    damage += attacker.Level;
-                }
-                if (((int)attacker.Career.UndeadAttackModifier & (int)DFCareer.AttackModifier.Phobia) != 0)
-                {
-                    damage -= attacker.Level;
-                }
-            }
-            else if (AITarget.GetEnemyGroup() == DFCareer.EnemyGroups.Daedra)
-            {
-                if (((int)attacker.Career.DaedraAttackModifier & (int)DFCareer.AttackModifier.Bonus) != 0)
-                {
-                    damage += attacker.Level;
-                }
-                if (((int)attacker.Career.DaedraAttackModifier & (int)DFCareer.AttackModifier.Phobia) != 0)
-                {
-                    damage -= attacker.Level;
-                }
-            }
-            else if (AITarget.GetEnemyGroup() == DFCareer.EnemyGroups.Humanoid)
-            {
-                if (((int)attacker.Career.HumanoidAttackModifier & (int)DFCareer.AttackModifier.Bonus) != 0)
-                {
-                    damage += attacker.Level;
-                }
-                if (((int)attacker.Career.HumanoidAttackModifier & (int)DFCareer.AttackModifier.Phobia) != 0)
-                {
-                    damage -= attacker.Level;
-                }
-            }
-            else if (AITarget.GetEnemyGroup() == DFCareer.EnemyGroups.Animals)
-            {
-                if (((int)attacker.Career.AnimalsAttackModifier & (int)DFCareer.AttackModifier.Bonus) != 0)
-                {
-                    damage += attacker.Level;
-                }
-                if (((int)attacker.Career.AnimalsAttackModifier & (int)DFCareer.AttackModifier.Phobia) != 0)
-                {
-                    damage -= attacker.Level;
-                }
-            }
-
-            return damage;
-        }
-
         public static void InflictPoison(DaggerfallEntity target, Poisons poisonType, bool bypassResistance)
         {
             // Target must have an entity behaviour and effect manager
@@ -1051,6 +1343,14 @@ namespace DaggerfallWorkshop.Game.Formulas
             DFCareer.Tolerance toleranceFlags = target.Career.Poison;
             if (toleranceFlags == DFCareer.Tolerance.Immune)
                 return;
+
+            // Handle player with racial resistance to poison
+            if (target is PlayerEntity)
+            {
+                RaceTemplate raceTemplate = (target as PlayerEntity).GetLiveRaceTemplate();
+                if ((raceTemplate.ImmunityFlags & DFCareer.EffectFlags.Poison) == DFCareer.EffectFlags.Poison)
+                    return;
+            }
 
             if (bypassResistance || SavingThrow(DFCareer.Elements.DiseaseOrPoison, DFCareer.EffectFlags.Poison, target, 0) != 0)
             {
@@ -1167,7 +1467,7 @@ namespace DaggerfallWorkshop.Game.Formulas
 
             savingThrow = Mathf.Clamp(savingThrow, 5, 95);
 
-            int percentDamageOrDuration = 0;
+            int percentDamageOrDuration = 100;
             int roll = Dice100.Roll();
 
             if (roll <= savingThrow)
@@ -1178,10 +1478,8 @@ namespace DaggerfallWorkshop.Game.Formulas
                 else
                     percentDamageOrDuration = 0;
             }
-            else
-                percentDamageOrDuration = 100;
 
-            return percentDamageOrDuration;
+            return Mathf.Clamp(percentDamageOrDuration, 0, 100);
         }
 
         public static int SavingThrow(IEntityEffect sourceEffect, DaggerfallEntity target)
@@ -1355,8 +1653,8 @@ namespace DaggerfallWorkshop.Game.Formulas
         // Generates health for enemy classes based on level and class
         public static int RollEnemyClassMaxHealth(int level, int hitPointsPerLevel)
         {
-            Formula_2i del;
-            if (formula_2i.TryGetValue("RollEnemyClassMaxHealth", out del))
+            Func<int, int, int> del;
+            if (TryGetOverride("RollEnemyClassMaxHealth", out del))
                 return del(level, hitPointsPerLevel);
 
             const int baseHealth = 10;
@@ -1369,9 +1667,63 @@ namespace DaggerfallWorkshop.Game.Formulas
             return maxHealth;
         }
 
+        /// <summary>
+        /// Roll for random spawn in location area at night.
+        /// </summary>
+        /// <returns>0 to generate a spawn. >0 to not generate a spawn.</returns>
+        public static int RollRandomSpawn_LocationNight()
+        {
+            Func<int> del;
+            if (TryGetOverride("RollRandomSpawn_LocationNight", out del))
+                return del();
+            else
+                return UnityEngine.Random.Range(0, 24);
+        }
+
+        /// <summary>
+        /// Roll for random spawn in wilderness during daylight hours.
+        /// </summary>
+        /// <returns>0 to generate a spawn. >0 to not generate a spawn.</returns>
+        public static int RollRandomSpawn_WildernessDay()
+        {
+            Func<int> del;
+            if (TryGetOverride("RollRandomSpawn_WildernessDay", out del))
+                return del();
+            else
+                return UnityEngine.Random.Range(0, 36);
+        }
+
+        /// <summary>
+        /// Roll for random spawn in wilderness at night.
+        /// </summary>
+        /// <returns>0 to generate a spawn. >0 to not generate a spawn.</returns>
+        public static int RollRandomSpawn_WildernessNight()
+        {
+            Func<int> del;
+            if (TryGetOverride("RollRandomSpawn_WildernessNight", out del))
+                return del();
+            else
+                return UnityEngine.Random.Range(0, 24);
+        }
+
+        /// <summary>
+        /// Roll for random spawn in dungeons.
+        /// </summary>
+        /// <returns>0 to generate a spawn. >0 to not generate a spawn.</returns>
+        public static int RollRandomSpawn_Dungeon()
+        {
+            Func<int> del;
+            if (TryGetOverride("RollRandomSpawn_Dungeon", out del))
+                return del();
+            else if (GameManager.Instance.PlayerEntity.EnemyAlertActive)
+                return UnityEngine.Random.Range(0, 36);
+
+            return 1; // >0 is do not generate a spawn
+        }
+
         #endregion
 
-        #region Holidays
+        #region Holidays & Conversation
 
         public static int GetHolidayId(uint gameMinutes, int regionIndex)
         {
@@ -1408,14 +1760,37 @@ namespace DaggerfallWorkshop.Game.Formulas
             return 0;
         }
 
+        public static float BonusChanceToKnowWhereIs(float bonusPerBlockLess = 0.0078f)
+        {
+            const int maxArea = 64;
+
+            // Must be in a location
+            if (!GameManager.Instance.PlayerGPS.HasCurrentLocation)
+                return 0;
+
+            // Get area of current location
+            DFLocation location = GameManager.Instance.PlayerGPS.CurrentLocation;
+            int locationArea = location.Exterior.ExteriorData.Width * location.Exterior.ExteriorData.Height;
+
+            // The largest possible location has an area of 64 (e.g. Daggerfall/Wayrest/Sentinel)
+            // The smallest possible location has an area of 1 (e.g. a tavern town)
+            // In a big city NPCs could be ignorant of all buildings, but in a small town it's unlikely they don't know the local tavern or smith
+            // So we apply a bonus that INCREASES the more city area size DECREASES
+            // With default inputs, a tiny 1x1 town NPC will get a +0.4914 to the default 0.5 chance for a total of 0.9914 chance to know building
+            // This is a big help as small towns also have less NPCs, and it gets frustrating when multiple NPCs don't knows where something is
+            float bonus = (maxArea - locationArea) * bonusPerBlockLess;
+
+            return bonus;
+        }
+
         #endregion
 
         #region Commerce
 
         public static int CalculateRoomCost(int daysToRent)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("CalculateRoomCost", out del))
+            Func<int, int> del;
+            if (TryGetOverride("CalculateRoomCost", out del))
                 return del(daysToRent);
 
             int cost = 0;
@@ -1426,18 +1801,25 @@ namespace DaggerfallWorkshop.Game.Formulas
                 cost = 7 * daysToRent;
 
             if (cost == 0) // Only renting for Heart's Day
-                DaggerfallUI.MessageBox(UserInterfaceWindows.HardStrings.roomFreeDueToHeartsDay);
+                DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("roomFreeDueToHeartsDay"));
 
             return cost;
         }
 
-        public static int CalculateCost(int baseItemValue, int shopQuality)
+        /// <summary>
+        /// Calculate the cost of something in a given shop.
+        /// </summary>
+        /// <param name="baseValue">Base value</param>
+        /// <param name="shopQuality">Shop quality 0-20</param>
+        /// <param name="conditionPercentage">Condition of item as a percentage, -1 indicates condition not applicable</param>
+        /// <returns>Shop specific cost</returns>
+        public static int CalculateCost(int baseValue, int shopQuality, int conditionPercentage = -1)
         {
-            Formula_2i del;
-            if (formula_2i.TryGetValue("CalculateCost", out del))
-                return del(baseItemValue, shopQuality);
+            Func<int, int, int, int> del;
+            if (TryGetOverride("CalculateCost", out del))
+                return del(baseValue, shopQuality, conditionPercentage);
 
-            int cost = baseItemValue;
+            int cost = baseValue;
 
             if (cost < 1)
                 cost = 1;
@@ -1448,8 +1830,12 @@ namespace DaggerfallWorkshop.Game.Formulas
             return cost;
         }
 
-        public static int CalculateItemRepairCost(int baseItemValue, int shopQuality, int condition, int max, Guild guild)
+        public static int CalculateItemRepairCost(int baseItemValue, int shopQuality, int condition, int max, IGuild guild)
         {
+            Func<int, int, int, int, IGuild, int> del;
+            if (TryGetOverride("CalculateItemRepairCost", out del))
+                return del(baseItemValue, shopQuality, condition, max, guild);
+
             // Don't cost already repaired item
             if (condition == max)
                 return 0;
@@ -1474,7 +1860,7 @@ namespace DaggerfallWorkshop.Game.Formulas
             return Mathf.Max(repairTime, DaggerfallDateTime.SecondsPerDay);
         }
 
-        public static int CalculateItemIdentifyCost(int baseItemValue, Guild guild)
+        public static int CalculateItemIdentifyCost(int baseItemValue, IGuild guild)
         {
             // Free on Witches Festival
             uint minutes = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime();
@@ -1495,8 +1881,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int CalculateDaedraSummoningCost(int npcRep)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("CalculateDaedraSummoningCost", out del))
+            Func<int, int> del;
+            if (TryGetOverride("CalculateDaedraSummoningCost", out del))
                 return del(npcRep);
 
             return 200000 - (npcRep * 1000);
@@ -1504,19 +1890,18 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int CalculateDaedraSummoningChance(int daedraRep, int bonus)
         {
-            Formula_2i del;
-            if (formula_2i.TryGetValue("CalculateDaedraSummoningChance", out del))
+            Func<int, int, int> del;
+            if (TryGetOverride("CalculateDaedraSummoningChance", out del))
                 return del(daedraRep, bonus);
 
-            int chance = 30 + daedraRep + bonus;
-            return Mathf.Clamp(chance, 5, 95);
+            return 30 + daedraRep + bonus;
         }
 
         public static int CalculateTradePrice(int cost, int shopQuality, bool selling)
         {
-            Formula_3i del;
-            if (formula_3i.TryGetValue("CalculateTradePrice", out del))
-                return del(cost, shopQuality, selling ? 1 : 0);
+            Func<int, int, bool, int> del;
+            if (TryGetOverride("CalculateTradePrice", out del))
+                return del(cost, shopQuality, selling);
 
             PlayerEntity player = GameManager.Instance.PlayerEntity;
             int merchant_mercantile_level = 5 * (shopQuality - 10) + 50;
@@ -1544,8 +1929,8 @@ namespace DaggerfallWorkshop.Game.Formulas
 
         public static int ApplyRegionalPriceAdjustment(int cost)
         {
-            Formula_1i del;
-            if (formula_1i.TryGetValue("ApplyRegionalPriceAdjustment", out del))
+            Func<int, int> del;
+            if (TryGetOverride("ApplyRegionalPriceAdjustment", out del))
                 return del(cost);
 
             int adjustedCost;
@@ -1608,27 +1993,101 @@ namespace DaggerfallWorkshop.Game.Formulas
             }
         }
 
-        public static float BonusChanceToKnowWhereIs(float bonusPerBlockLess = 0.0078f)
+        #endregion
+
+        #region Items
+
+        public static bool IsItemStackable(DaggerfallUnityItem item)
         {
-            const int maxArea = 64;
+            Func<DaggerfallUnityItem, bool> del;
+            if (TryGetOverride("IsItemStackable", out del))
+                if (del(item))
+                    return true; // Only return if override returns true
 
-            // Must be in a location
-            if (!GameManager.Instance.PlayerGPS.HasCurrentLocation)
-                return 0;
+            if (item.IsIngredient || item.IsPotion ||
+                item.IsOfTemplate(ItemGroups.Currency, (int)Currency.Gold_pieces) ||
+                item.IsOfTemplate(ItemGroups.Weapons, (int)Weapons.Arrow) ||
+                item.IsOfTemplate(ItemGroups.UselessItems2, (int)UselessItems2.Oil))
+                return true;
+            else
+                return false;
+        }
 
-            // Get area of current location
-            DFLocation location = GameManager.Instance.PlayerGPS.CurrentLocation;
-            int locationArea = location.Exterior.ExteriorData.Width * location.Exterior.ExteriorData.Height;
+        /// <summary>
+        /// Allows loot found in containers and enemy corpses to be modified.
+        /// </summary>
+        /// <param name="lootItems">An array of the loot items</param>
+        /// <returns>The number of items modified.</returns>
+        public static int ModifyFoundLootItems(ref DaggerfallUnityItem[] lootItems)
+        {
+            Func<DaggerfallUnityItem[], int> del;
+            if (TryGetOverride("ModifyFoundLootItems", out del))
+                return del(lootItems);
 
-            // The largest possible location has an area of 64 (e.g. Daggerfall/Wayrest/Sentinel)
-            // The smallest possible location has an area of 1 (e.g. a tavern town)
-            // In a big city NPCs could be ignorant of all buildings, but in a small town it's unlikely they don't know the local tavern or smith
-            // So we apply a bonus that INCREASES the more city area size DECREASES
-            // With default inputs, a tiny 1x1 town NPC will get a +0.4914 to the default 0.5 chance for a total of 0.9914 chance to know building
-            // This is a big help as small towns also have less NPCs, and it gets frustrating when multiple NPCs don't knows where something is
-            float bonus = (maxArea - locationArea) * bonusPerBlockLess;
+            // DFU does no post-processing of loot items hence report zero changes, this is solely for mods to override.
+            return 0;
+        }
 
-            return bonus;
+        /// <summary>
+        /// Gets a random material based on player level.
+        /// Note, this is called by default RandomArmorMaterial function.
+        /// </summary>
+        /// <param name="playerLevel">Player level, possibly adjusted.</param>
+        /// <returns>WeaponMaterialTypes value of material selected.</returns>
+        public static WeaponMaterialTypes RandomMaterial(int playerLevel)
+        {
+            Func<int, WeaponMaterialTypes> del;
+            if (TryGetOverride("RandomMaterial", out del))
+                return del(playerLevel);
+
+            int levelModifier = (playerLevel - 10);
+
+            if (levelModifier >= 0)
+                levelModifier *= 2;
+            else
+                levelModifier *= 4;
+
+            int randomModifier = UnityEngine.Random.Range(0, 256);
+
+            int combinedModifiers = levelModifier + randomModifier;
+            combinedModifiers = Mathf.Clamp(combinedModifiers, 0, 256);
+
+            int material = 0; // initialize to iron
+
+            // The higher combinedModifiers is, the higher the material
+            while (ItemBuilder.materialsByModifier[material] < combinedModifiers)
+            {
+                combinedModifiers -= ItemBuilder.materialsByModifier[material++];
+            }
+
+            return (WeaponMaterialTypes)(material);
+        }
+
+        /// <summary>
+        /// Gets a random armor material based on player level.
+        /// </summary>
+        /// <param name="playerLevel">Player level, possibly adjusted.</param>
+        /// <returns>ArmorMaterialTypes value of material selected.</returns>
+        public static ArmorMaterialTypes RandomArmorMaterial(int playerLevel)
+        {
+            Func<int, ArmorMaterialTypes> del;
+            if (TryGetOverride("RandomArmorMaterial", out del))
+                return del(playerLevel);
+
+            // Random armor material
+            int roll = Dice100.Roll();
+            if (roll >= 70)
+            {
+                if (roll >= 90)
+                {
+                    WeaponMaterialTypes plateMaterial = FormulaHelper.RandomMaterial(playerLevel);
+                    return (ArmorMaterialTypes)(0x0200 + plateMaterial);
+                }
+                else
+                    return ArmorMaterialTypes.Chain;
+            }
+            else
+                return ArmorMaterialTypes.Leather;
         }
 
         #endregion
@@ -1651,6 +2110,10 @@ namespace DaggerfallWorkshop.Game.Formulas
 
             totalGoldCostOut = 0;
             totalSpellPointCostOut = 0;
+
+            // Must have effect entries
+            if (effectEntries == null || effectEntries.Length == 0)
+                return;
 
             // Add costs for each active effect slot
             for (int i = 0; i < effectEntries.Length; i++)
@@ -1836,11 +2299,13 @@ namespace DaggerfallWorkshop.Game.Formulas
         }
 
         /// <summary>
-        /// Reversed from classic. Calculates cost of casting a spell.
+        /// Reversed from classic. Calculates cost of casting a spell. This cost is also used
+        /// to lower item condition when equipping an item whith a "Cast when held" effect.
         /// For now this is only being used for enchanted items, because there is other code for entity-cast spells.
         /// </summary>
         /// <param name="spell">Spell record read from SPELLS.STD.</param>
-        public static int CalculateCastingCost(SpellRecord.SpellRecordData spell)
+        /// <param name="enchantingItem">True if the method is used from the magic item maker.</param>
+        public static int CalculateCastingCost(SpellRecord.SpellRecordData spell, bool enchantingItem= true)
         {
             // Indices into effect settings array for each effect and its subtypes
             byte[] effectIndices = {    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Paralysis
@@ -1943,21 +2408,39 @@ namespace DaggerfallWorkshop.Game.Formulas
                                         0x0F, 0x11, 0x0A, 0x11, // Comprehend Languages
                                         0x0F, 0x0F, 0x05, 0x05 }; // Intensify Fire / Diminish Fire / Wall of --
 
+            // Used to know which Magic School an effect belongs to
+            byte[] effectMagicSchools = { 0, 2, 3, 1, 2, 2, 3, 2, 0, 1,
+                                          1, 2, 3, 5, 4, 5, 3, 3, 1, 3,
+                                          1, 4, 4, 5, 5, 0, 1, 0, 0, 5,
+                                          0, 4, 0, 4, 4, 0, 3, 3, 0, 4,
+                                          4, 4, 5, 3, 3, 0, 0, 4, 4, 4,
+                                          4 };
+
+            // Used to get the skill corresponding to each of the above magic school
+            DFCareer.Skills[] magicSkills = { DFCareer.Skills.Alteration,
+                                              DFCareer.Skills.Restoration,
+                                              DFCareer.Skills.Destruction,
+                                              DFCareer.Skills.Mysticism,
+                                              DFCareer.Skills.Thaumaturgy,
+                                              DFCareer.Skills.Illusion };
+
             // All effects have one of 6 types for their settings depending on which settings (duration, chance, magnitude)
             // they use, which determine how the coefficient values are used with their data to determine spell casting
             // cost /magic item value/enchantment point cost.
             // There is also a 7th type that is supported in classic (see below) but no effect is defined to use it.
-            byte[] settingsTypes = { 1, 2, 3, 4, 5, 4, 4, 2, 1, 6, 5, 6, 1, 3, 3, 3, 1, 4, 2, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 1, 3, 3, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 3, 4, 1, 2, 2, 2, 2, 2, 2, 2 };
+            byte[] settingsTypes = { 1, 2, 3, 4, 5, 4, 4, 2, 1, 6,
+                                     5, 6, 1, 3, 3, 3, 1, 4, 2, 1,
+                                     1, 1, 1, 3, 3, 3, 3, 3, 3, 1,
+                                     3, 3, 1, 1, 1, 2, 2, 1, 1, 1,
+                                     1, 1, 3, 4, 1, 2, 2, 2, 2, 2,
+                                     2 };
 
             // Modifiers for casting ranges
             byte[] rangeTypeModifiers = { 2, 2, 3, 4, 5 };
 
             int cost = 0;
-            int skill = 50;  // 50 is used for item enchantments, which is all this spell is used for now.
-                             // This function could be used as in classic to get casting costs for spells
-                             // cast by entities by replacing skillUsedForEnchantedItemCost with the skill
-                             // of the caster in the effect's spell school.
-
+            int skill = 50; // 50 is used for item enchantments
+            
             for (int i = 0; i < 3; ++i)
             {
                 if (spell.effects[i].type != -1)
@@ -1972,6 +2455,12 @@ namespace DaggerfallWorkshop.Game.Formulas
                     else // Subtype exists
                     {
                         Array.Copy(effectCoefficients, 4 * effectIndices[12 * spell.effects[i].type + spell.effects[i].subType], coefficientsForThisEffect, 0, 4);
+                    }
+
+                    if (!enchantingItem)
+                    {
+                        // If not using the item maker, then player skill corresponding to the effect magic school must be used
+                        skill = GameManager.Instance.PlayerEntity.Skills.GetLiveSkillValue(magicSkills[effectMagicSchools[spell.effects[i].type]]);
                     }
 
                     // Add to the cost based on this effect's settings
@@ -2063,117 +2552,148 @@ namespace DaggerfallWorkshop.Game.Formulas
         /// <returns>Item max enchantment power.</returns>
         public static int GetItemEnchantmentPower(DaggerfallUnityItem item)
         {
+            Func<DaggerfallUnityItem, int> del;
+            if (TryGetOverride("GetItemEnchantmentPower", out del))
+                return del(item);
+
             if (item == null)
                 throw new Exception("GetItemEnchantmentPower: item is null");
 
+            float multiplier = 0f;
             if (item.ItemGroup == ItemGroups.Weapons)
-                return GetWeaponEnchantmentPower(item);
+                multiplier = GetWeaponEnchantmentMultiplier((WeaponMaterialTypes)item.NativeMaterialValue);
             else if (item.ItemGroup == ItemGroups.Armor)
-                return GetArmorEnchantmentPower(item);
-            else
-                return item.ItemTemplate.enchantmentPoints;
-        }
-
-        public static int GetWeaponEnchantmentPower(DaggerfallUnityItem item)
-        {
-            if (item == null || item.ItemGroup != ItemGroups.Weapons)
-                throw new Exception("GetWeaponEnchantmentPower: item is null or not a weapon type");
-
-            // UESP lists regular material power progression in weapon matrix: https://en.uesp.net/wiki/Daggerfall:Enchantment_Power#Weapons
-            // Enchantment power values for staves are inaccurate in UESP weapon matrix (confirmed in classic)
-            // The below yields correct enchantment power for staves matching classic
-            float multiplier;
-            switch((WeaponMaterialTypes)item.NativeMaterialValue)
-            {
-                default:       
-                case WeaponMaterialTypes.Steel:         // Steel uses base enchantment power
-                    multiplier = 0;
-                    break;
-                case WeaponMaterialTypes.Iron:          // Iron is -25% from base
-                    multiplier = -0.25f;
-                    break;
-                case WeaponMaterialTypes.Silver:        // Silver is +75% from base
-                    multiplier = 0.75f;
-                    break;
-                case WeaponMaterialTypes.Elven:         // Elven is +25% from base
-                    multiplier = 0.25f;
-                    break;
-                case WeaponMaterialTypes.Dwarven:       // Dwarven is +50% from base
-                    multiplier = 0.5f;
-                    break;
-                case WeaponMaterialTypes.Mithril:       // Mithril is +25% from base
-                    multiplier = 0.25f;
-                    break;
-                case WeaponMaterialTypes.Adamantium:    // Adamantium is +75% from base
-                    multiplier = 0.75f;
-                    break;
-                case WeaponMaterialTypes.Ebony:         // Ebony is +100% from base
-                    multiplier = 1.0f;
-                    break;
-                case WeaponMaterialTypes.Orcish:        // Orcish is +150% from base
-                    multiplier = 1.5f;
-                    break;
-                case WeaponMaterialTypes.Daedric:       // Daedric is +200% from base
-                    multiplier = 2.0f;
-                    break;
-            }
+                multiplier = GetArmorEnchantmentMultiplier((ArmorMaterialTypes)item.NativeMaterialValue);
 
             // Final enchantment power is basePower + basePower*multiplier (rounded down)
             int basePower = item.ItemTemplate.enchantmentPoints;
             return basePower + Mathf.FloorToInt(basePower * multiplier);
         }
 
-        public static int GetArmorEnchantmentPower(DaggerfallUnityItem item)
+        public static float GetWeaponEnchantmentMultiplier(WeaponMaterialTypes weaponMaterial)
         {
-            if (item == null || item.ItemGroup != ItemGroups.Armor)
-                throw new Exception("GetArmorEnchantmentPower: item is null or not an armour type");
+            // UESP lists regular material power progression in weapon matrix: https://en.uesp.net/wiki/Daggerfall:Enchantment_Power#Weapons
+            // Enchantment power values for staves are inaccurate in UESP weapon matrix (confirmed in classic)
+            // The below yields correct enchantment power for staves matching classic
+            switch(weaponMaterial)
+            {
+                default:       
+                case WeaponMaterialTypes.Steel:         // Steel uses base enchantment power
+                    return 0f;
+                case WeaponMaterialTypes.Iron:          // Iron is -25% from base
+                    return -0.25f;
+                case WeaponMaterialTypes.Silver:        // Silver is +75% from base
+                    return 0.75f;
+                case WeaponMaterialTypes.Elven:         // Elven is +25% from base
+                    return 0.25f;
+                case WeaponMaterialTypes.Dwarven:       // Dwarven is +50% from base
+                    return 0.5f;
+                case WeaponMaterialTypes.Mithril:       // Mithril is +25% from base
+                    return 0.25f;
+                case WeaponMaterialTypes.Adamantium:    // Adamantium is +75% from base
+                    return 0.75f;
+                case WeaponMaterialTypes.Ebony:         // Ebony is +100% from base
+                    return 1.0f;
+                case WeaponMaterialTypes.Orcish:        // Orcish is +150% from base
+                    return 1.5f;
+                case WeaponMaterialTypes.Daedric:       // Daedric is +200% from base
+                    return 2.0f;
+            }
+        }
 
+        public static float GetArmorEnchantmentMultiplier(ArmorMaterialTypes armorMaterial)
+        {
             // UESP lists highly variable material power progression in armour matrix: https://en.uesp.net/wiki/Daggerfall:Enchantment_Power#Armor
             // This indicates certain armour types don't follow the same general material progression patterns for enchantment point multipliers
             // Yet to confirm this in classic - but not entirely confident in accuracy of UESP information here either
             // For now using consistent progression for enchantment point multipliers and can improve later if required
-            float multiplier;
-            switch ((ArmorMaterialTypes)item.NativeMaterialValue)
+            switch (armorMaterial)
             {
                 default:
                 case ArmorMaterialTypes.Leather:        // Leather/Chain/Steel all use base enchantment power
                 case ArmorMaterialTypes.Chain:
                 case ArmorMaterialTypes.Chain2:
                 case ArmorMaterialTypes.Steel:
-                    multiplier = 0;
-                    break;
+                    return 0f;
                 case ArmorMaterialTypes.Iron:           // Iron is -25% from base
-                    multiplier = -0.25f;
-                    break;
+                    return -0.25f;
                 case ArmorMaterialTypes.Silver:         // Silver is +75% from base
-                    multiplier = 0.75f;
-                    break;
+                    return 0.75f;
                 case ArmorMaterialTypes.Elven:          // Elven is +25% from base
-                    multiplier = 0.25f;
-                    break;
+                    return 0.25f;
                 case ArmorMaterialTypes.Dwarven:        // Dwarven is +50% from base
-                    multiplier = 0.5f;
-                    break;
+                    return 0.5f;
                 case ArmorMaterialTypes.Mithril:        // Mithril is +25% from base
-                    multiplier = 0.25f;
-                    break;
+                    return 0.25f;
                 case ArmorMaterialTypes.Adamantium:     // Adamantium is +75% from base
-                    multiplier = 0.75f;
-                    break;
+                    return 0.75f;
                 case ArmorMaterialTypes.Ebony:          // Ebony is +100% from base
-                    multiplier = 1.0f;
-                    break;
+                    return 1.0f;
                 case ArmorMaterialTypes.Orcish:         // Orcish is +150% from base
-                    multiplier = 1.5f;
-                    break;
+                    return 1.5f;
                 case ArmorMaterialTypes.Daedric:        // Daedric is +200% from base
-                    multiplier = 2.0f;
-                    break;
+                    return 2.0f;
+            }
+        }
+
+        #endregion
+
+        #region Formula Overrides
+
+        /// <summary>
+        /// Registers an override for a formula using a generic `System.Func{T}` callback
+        /// with the same signature as the method it overrides
+        /// (i.e. `RegisterOverride{Func{int, int, float}}("FormulaName", (a, b) => (float)a / b);`).
+        /// The invocation will fail if signature is not correct, meaning if the delegate
+        /// is not one of the variation of `Func` with the expected arguments.
+        /// </summary>
+        /// <param name="provider">The mod that provides this override; used to enforce load order.</param>
+        /// <param name="formulaName">The name of the method that provides the formula.</param>
+        /// <param name="formula">A callback that implements the formula.</param>
+        /// <typeparam name="TDelegate">One of the available generic Func delegates.</typeparam>
+        /// <exception cref="ArgumentNullException">`formulaName` or `formula` is null.</exception>
+        /// <exception cref="InvalidCastException">Type is not a delegate.</exception>
+        public static void RegisterOverride<TDelegate>(Mod provider, string formulaName, TDelegate formula)
+            where TDelegate : class
+        {
+            if (formulaName == null)
+                throw new ArgumentNullException("formulaName");
+
+            if (formula == null)
+                throw new ArgumentNullException("formula");
+
+            var del = formula as Delegate;
+            if (del == null)
+                throw new InvalidCastException("formula is not a delegate.");
+
+            FormulaOverride formulaOverride;
+            if (!overrides.TryGetValue(formulaName, out formulaOverride) || formulaOverride.Provider.LoadPriority < provider.LoadPriority)
+                overrides[formulaName] = new FormulaOverride(del, provider);
+        }
+
+        /// <summary>
+        /// Gets an override for a formula.
+        /// </summary>
+        /// <param name="formulaName">The name of the method that provides the formula.</param>
+        /// <param name="formula">A callback that implements the formula.</param>
+        /// <typeparam name="TDelegate">One of the available generic Func delegates.</typeparam>
+        /// <returns>True if formula is found.</returns>
+        private static bool TryGetOverride<TDelegate>(string formulaName, out TDelegate formula)
+            where TDelegate : class
+        {
+            FormulaOverride formulaOverride;
+            if (overrides.TryGetValue(formulaName, out formulaOverride))
+            {
+                if ((formula = formulaOverride.Formula as TDelegate) != null)
+                    return true;
+
+                const string errorMessage = "Removed override for formula {0} provided by {1} because signature doesn't match (expected {2} and got {3}).";
+                Debug.LogErrorFormat(errorMessage, formulaName, formulaOverride.Provider.Title, typeof(TDelegate), formulaOverride.Formula.GetType());
+                overrides.Remove(formulaName);
             }
 
-            // Final enchantment power is basePower + basePower*multiplier (rounded down)
-            int basePower = item.ItemTemplate.enchantmentPoints;
-            return basePower + Mathf.FloorToInt(basePower * multiplier);
+            formula = default(TDelegate);
+            return false;
         }
 
         #endregion

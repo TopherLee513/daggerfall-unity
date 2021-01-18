@@ -6,26 +6,31 @@ MyDaggerfallUnitySavePath=
 ResolutionWidth=1280
 ResolutionHeight=720
 RetroRenderingMode=0
+PostProcessingInRetroMode=0
 UseMipMapsInRetroMode=False
+PalettizationLUTShift=1
 VSync=True
+TargetFrameRate=0
 Fullscreen=False
 ExclusiveFullscreen=False
+RunInBackground=True
 FieldOfView=65
 MainFilterMode=0
 QualityLevel=5
 ShadowResolutionMode=0
-UseLegacyDeferred=False
 DungeonLightShadows=False
 InteriorLightShadows=True
 ExteriorLightShadows=True
+MobileNPCShadows=False
+GeneralBillboardShadows=False
 DungeonShadowDistance=20.0
 InteriorShadowDistance=30.0
 ExteriorShadowDistance=90.0
-
 EnableTextureArrays=True
 RandomDungeonTextures=0
 
 [Audio]
+AlternateMusic=False
 SoundFont=
 
 [ChildGuard]
@@ -50,6 +55,7 @@ EnableInventoryInfoPanel=True
 EnableEnhancedItemLists=False
 EnableVitalsIndicators=True
 EnableModernConversationStyleInTalkWindow=False
+IconsPositioningScheme=Classic
 HelmAndShieldMaterialDisplay=0
 InteractionModeIcon = minimal
 EnableArrowCounter=True
@@ -57,10 +63,15 @@ AccelerateUICopyTexture=False
 SDFFontRendering=True
 EnableGeographicBackgrounds=False
 DungeonExitWagonPrompt=True
+TravelMapLocationsOutline=False
 IllegalRestWarning=True
-LoiterLimitInHours=3
-LargeHUD=false
-LargeHUDScale=1.0
+LargeHUD=False
+LargeHUDDocked=True
+LargeHUDUndockedScale=0.75
+LargeHUDUndockedAlignment=0
+LargeHUDUndockedOffsetWeapon=False
+LargeHUDOffsetHorse=True
+CanDropQuestItems=False
 
 [Spells]
 EnableSpellLighting=True
@@ -70,11 +81,17 @@ EnableSpellShadows=True
 InvertMouseVertical=False
 MouseLookSmoothing=True
 MouseLookSensitivity=1.0
+JoystickLookSensitivity=1.0
+JoystickCursorSensitivity=1.0
+JoystickMovementThreshold=0.9
+JoystickDeadzone=0.0
+EnableController=True
 HeadBobbing=True
 Handedness=0
 WeaponAttackThreshold=0.03
 WeaponSensitivity=1.0
-MoveSpeedAcceleration=10.0
+MovementAcceleration=False
+ToggleSneak=False
 ClickToAttack = False
 CameraRecoilStrength = 3
 SoundVolume = 1.0
@@ -100,7 +117,8 @@ StartInDungeon=True
 TerrainDistance=3
 TerrainHeightmapPixelError=5
 SmallerDungeons=False
-CustomBooksImport=False
+CustomBooksImport=True
+AssetCacheThreshold = 25
 
 [Enhancements]
 LypyL_GameConsole=True
@@ -118,3 +136,5 @@ CombatVoices=True
 EnemyInfighting=True
 EnhancedCombatAI=True
 GuildQuestListBox=False
+BowLeftHandWithSwitching=False
+LoiterLimitInHours=3

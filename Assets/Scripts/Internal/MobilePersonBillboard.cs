@@ -1,10 +1,10 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    
+// Contributors:    TheLacus
 // 
 // Notes:
 //
@@ -25,6 +25,55 @@ using DaggerfallWorkshop.Utility.AssetInjection;
 namespace DaggerfallWorkshop
 {
     /// <summary>
+    /// The component that handles graphics for a mobile person.
+    /// </summary>
+    /// <remarks>
+    /// Implementations should be added to a prefab named "MobilePersonAsset" bundled with a mod.
+    /// This prefab acts as a provider for all custom npcs graphics. This allows mods to replace classic
+    /// <see cref="MobilePersonBillboard"/> with 3d models or other alternatives.
+    /// The actual graphic asset for specific npc should be loaded when requested by <see cref="SetPerson"/>.
+    /// </remarks>
+    public abstract class MobilePersonAsset : MonoBehaviour
+    {
+        /// <summary>
+        /// Trigger collider used for interaction with player. The collider should be altered to enclose the entire npc mesh when
+        /// <see cref="SetPerson"/> is called. A sign of badly setup collider is misbehaviour of idle state and talk functionalities.
+        /// </summary>
+        protected internal CapsuleCollider Trigger { get; internal set; }
+
+        /// <summary>
+        /// Gets or sets idle state. Daggerfall NPCs are either in or motion or idle facing player.
+        /// This only controls animation state, actual motion is handled by <see cref="MobilePersonMotor"/>.
+        /// </summary>
+        public abstract bool IsIdle { get; set; }
+
+        /// <summary>
+        /// Setup this person based on race, gender and outfit variant. Enitities in a npcs pool can be recycled
+        /// when out of range, meaning that this method can be called more than once with different parameters.
+        /// </summary>
+        /// <param name="race">Race of target npc.</param>
+        /// <param name="gender">Gender of target npc.</param>
+        /// <param name="personVariant">Which basic outfit does the person wear.</param>
+        /// <param name="isGuard">True if this npc is a city watch guard.</param>
+        public abstract void SetPerson(Races race, Genders gender, int personVariant, bool isGuard);
+
+        /// <summary>
+        /// Gets size of asset used by this person (i.e size of bounds). Used to adjust position on terrain.
+        /// </summary>
+        /// <returns>Size of npc.</returns>
+        public abstract Vector3 GetSize();
+
+        /// <summary>
+        /// Gets a bitmask that provides all the layers used by this asset.
+        /// </summary>
+        /// <returns>A layer mask.</returns>
+        public virtual int GetLayerMask()
+        {
+            return 1 << gameObject.layer;
+        }
+    }
+
+    /// <summary>
     /// Billboard class for classic wandering NPCs found in town environments.
     /// </summary>
 #if UNITY_EDITOR
@@ -32,9 +81,12 @@ namespace DaggerfallWorkshop
 #endif
     [RequireComponent(typeof(MeshFilter))]
     [RequireComponent(typeof(MeshRenderer))]
-    public class MobilePersonBillboard : MonoBehaviour
+    public class MobilePersonBillboard : MobilePersonAsset
     {
         #region Fields
+
+        const int numberOrientations = 8;
+        const float anglePerOrientation = 360f / numberOrientations;
 
         Vector3 cameraPosition;
         Camera mainCamera = null;
@@ -80,7 +132,6 @@ namespace DaggerfallWorkshop
 
         const int IdleAnimSpeed = 1;
         const int MoveAnimSpeed = 4;
-
         static MobileAnimation[] IdleAnims = new MobileAnimation[]
         {
             new MobileAnimation() {Record = 5, FramePerSecond = IdleAnimSpeed, FlipLeftRight = false},          // Idle
@@ -118,15 +169,10 @@ namespace DaggerfallWorkshop
         /// Daggerfall NPCs are either in or motion or idle facing player.
         /// This only controls anim state, actual motion is handled by MobilePersonMotor.
         /// </summary>
-        public bool IsIdle
+        public sealed override bool IsIdle
         {
             get { return (currentAnimState == AnimStates.Idle); }
             set { SetIdle(value); }
-        }
-
-        public bool IsUsingGuardTexture
-        {
-            get { return isUsingGuardTexture; }
         }
 
         #endregion
@@ -141,6 +187,10 @@ namespace DaggerfallWorkshop
                 mainCamera = GameManager.Instance.MainCamera;
                 meshFilter = GetComponent<MeshFilter>();
             }
+
+            // Mobile NPC shadows if enabled
+            if (DaggerfallUnity.Settings.MobileNPCShadows)
+                GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.TwoSided;
         }
 
         private void Update()
@@ -176,7 +226,7 @@ namespace DaggerfallWorkshop
         /// <summary>
         /// Setup this person based on race and gender.
         /// </summary>
-        public void SetPerson(Races race, Genders gender, int personVariant, bool isGuard)
+        public override void SetPerson(Races race, Genders gender, int personVariant, bool isGuard)
         {
             // Must specify a race
             if (race == Races.None)
@@ -226,7 +276,7 @@ namespace DaggerfallWorkshop
         /// Gets billboard size.
         /// </summary>
         /// <returns>Vector2 of billboard width and height.</returns>
-        public Vector2 GetBillboardSize()
+        public sealed override Vector3 GetSize()
         {
             if (recordSizes == null || recordSizes.Length == 0)
                 return Vector2.zero;
@@ -376,32 +426,10 @@ namespace DaggerfallWorkshop
             facingAngle = Vector3.Angle(dir, parentForward);
             facingAngle = facingAngle * -Mathf.Sign(Vector3.Cross(dir, parentForward).y);
 
-            // Hand-tune facing index
-            int orientation = 0;
-
-            // Right-hand side
-            if (facingAngle > 0.0f && facingAngle < 22.5f)
-                orientation = 0;
-            if (facingAngle > 22.5f && facingAngle < 67.5f)
-                orientation = 7;
-            if (facingAngle > 67.5f && facingAngle < 112.5f)
-                orientation = 6;
-            if (facingAngle > 112.5f && facingAngle < 157.5f)
-                orientation = 5;
-            if (facingAngle > 157.5f && facingAngle < 180.0f)
-                orientation = 4;
-
-            // Left-hand side
-            if (facingAngle < 0.0f && facingAngle > -22.5f)
-                orientation = 0;
-            if (facingAngle < -22.5f && facingAngle > -67.5f)
-                orientation = 1;
-            if (facingAngle < -67.5f && facingAngle > -112.5f)
-                orientation = 2;
-            if (facingAngle < -112.5f && facingAngle > -157.5f)
-                orientation = 3;
-            if (facingAngle < -157.5f && facingAngle > -180.0f)
-                orientation = 4;
+            // Facing index
+            int orientation = - Mathf.RoundToInt(facingAngle / anglePerOrientation);
+            // Wrap values to 0 .. numberOrientations-1
+            orientation = (orientation + numberOrientations) % numberOrientations;
 
             // Change person to this orientation
             if (orientation != lastOrientation)

@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -20,7 +20,7 @@ using System.Text.RegularExpressions;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 {
-    public class DaggerfallPlayerHistoryWindow : DaggerfallBaseWindow
+    public class DaggerfallPlayerHistoryWindow : DaggerfallPopupWindow
     {
         const string nativeImgName = "LGBK00I0.IMG";
         const int extraLeading = 0;
@@ -31,6 +31,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         List<TextLabel> pageLabels = new List<TextLabel>();
         int pageLines;
         int pageStartLine = 0;
+
+        bool isCloseWindowDeferred = false;
 
         public int ClassId { get; protected set; }
 
@@ -50,17 +52,21 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             NativePanel.BackgroundTexture = nativeTexture;
 
             // Load default pixel font
-            ChangeFont(4);
+            ChangeFont(DaggerfallFont.FontName.FONT0003);
 
             // Add buttons
             Button nextPageButton = DaggerfallUI.AddButton(new Rect(208, 188, 14, 8), NativePanel);
             nextPageButton.OnMouseClick += NextPageButton_OnMouseClick;
+            nextPageButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.HistoryNextPage);
 
             Button previousPageButton = DaggerfallUI.AddButton(new Rect(181, 188, 14, 48), NativePanel);
             previousPageButton.OnMouseClick += PreviousPageButton_OnMouseClick;
+            previousPageButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.HistoryPreviousPage);
 
             Button exitButton = DaggerfallUI.AddButton(new Rect(277, 187, 32, 10), NativePanel);
             exitButton.OnMouseClick += ExitButton_OnMouseClick;
+            exitButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.HistoryExit);
+            exitButton.OnKeyboardEvent += ExitButton_OnKeyboardEvent;
 
             LayoutPage();
             DaggerfallUI.Instance.PlayOneShot(SoundClips.OpenBook);
@@ -73,6 +79,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             if (MoveNextPage())
             {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.OpenBook);
                 LayoutPage();
             }
         }
@@ -81,24 +88,47 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             if (MovePreviousPage())
             {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.OpenBook);
                 LayoutPage();
             }
         }
 
         private void NativePanel_OnMouseScrollDown(BaseScreenComponent sender)
         {
-            NextPageButton_OnMouseClick(sender, Vector2.zero);
+            if (MoveNextPage())
+            {
+                LayoutPage();
+            }
         }
 
         private void NativePanel_OnMouseScrollUp(BaseScreenComponent sender)
         {
-            PreviousPageButton_OnMouseClick(sender, Vector2.zero);
+            if (MovePreviousPage())
+            {
+                LayoutPage();
+            }
         }
 
         private void ExitButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             pageStartLine = 0; // Go back to the first page
             CloseWindow();
+        }
+
+        protected void ExitButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+            {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+                isCloseWindowDeferred = true;
+            }
+            else if (keyboardEvent.type == EventType.KeyUp && isCloseWindowDeferred)
+            {
+                isCloseWindowDeferred = false;
+                pageStartLine = 0; // Go back to the first page
+                CloseWindow();
+            }
         }
 
         public override void OnPush()
@@ -144,9 +174,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             pageLabels.Clear();
         }
 
-        void ChangeFont(int index)
+        void ChangeFont(DaggerfallFont.FontName fontName)
         {
-            currentFont = DaggerfallUI.Instance.GetFont(index);
+            currentFont = DaggerfallUI.Instance.GetFont(fontName);
         }
 
         bool MoveNextPage()

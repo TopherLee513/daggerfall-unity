@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -259,6 +259,22 @@ namespace DaggerfallWorkshop.Game
         {
             IsRaining = false;
             IsStorming = false;
+        }
+
+        public static bool IsSnowFreeClimate(int climateIndex)
+        {
+            var climate = (MapsFile.Climates)climateIndex;
+            switch (climate)
+            {
+                case MapsFile.Climates.Desert:
+                case MapsFile.Climates.Desert2:
+                case MapsFile.Climates.Rainforest:
+                case MapsFile.Climates.Subtropical:
+                    return true;
+
+                default:
+                    return false;
+            }
         }
 
         #endregion

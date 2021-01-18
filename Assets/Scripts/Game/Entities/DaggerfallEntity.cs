@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -259,7 +259,7 @@ namespace DaggerfallWorkshop.Game.Entity
         public int CurrentHealth { get { return GetCurrentHealth(); } set { SetHealth(value); } }
         public float CurrentHealthPercent { get { return GetCurrentHealth() / (float)MaxHealth; } }
         public int RawMaxHealth { get { return GetRawMaxHealth(); } }
-        public int MaxFatigue { get { return (stats.LiveStrength + stats.LiveEndurance) * 64; } }
+        public int MaxFatigue { get { return (stats.LiveStrength + stats.LiveEndurance) * FatigueMultiplier; } }
         public int CurrentFatigue { get { return GetCurrentFatigue(); } set { SetFatigue(value); } }
         public int MaxMagicka { get { return GetMaxMagicka(); } set { maxMagicka = value; } }
         public int RawMaxMagicka { get { return GetRawMaxMagicka(); } }
@@ -400,15 +400,17 @@ namespace DaggerfallWorkshop.Game.Entity
         public void SetIncreasedArmorValueModifier(int amount)
         {
             // Increased armor value does not stack, only effect with the highest modifier used
-            // In classic effects this never goes above +5
-            if (IncreasedArmorValueModifier < amount)
+            // In classic effects this never goes below -5 (lower modifier -> higher armor)
+            if (amount < IncreasedArmorValueModifier)
+            {
                 IncreasedArmorValueModifier = amount;
+            }
         }
 
         public void SetDecreasedArmorValueModifier(int amount)
         {
             // Decreased armor value does not stack, only effect with the lowest modifier uses
-            // In classic effects this never goes below -5
+            // In classic effects this never goes above +5 (higher modifier -> lower armor)
             if (amount < DecreasedArmorValueModifier)
                 DecreasedArmorValueModifier = amount;
         }
@@ -456,9 +458,6 @@ namespace DaggerfallWorkshop.Game.Entity
 
         int GetCurrentMagicka()
         {
-            if (currentMagicka > MaxMagicka)
-                currentMagicka = MaxMagicka;
-
             return currentMagicka;
         }
 
@@ -599,7 +598,10 @@ namespace DaggerfallWorkshop.Game.Entity
                     // Get slot used by this armor
                     EquipSlots slot = ItemEquipTable.GetEquipSlot(armor);
 
+                    // Get equip index with out of range check
                     int index = (int)DaggerfallUnityItem.GetBodyPartForEquipSlot(slot);
+                    if (armorValues == null || index < 0 || index >= armorValues.Length)
+                        return;
 
                     if (equipping)
                     {

@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -141,11 +141,55 @@ namespace DaggerfallWorkshop.Game.Guilds
 
     public static class Services
     {
+        #region Merchant service registration
+
+        public delegate void CustomMerchantService(IUserInterfaceWindow window);
+
+        private static Dictionary<int, string> customMerchantServiceNames = new Dictionary<int, string>();
+        private static Dictionary<int, CustomMerchantService> customMerchantServices = new Dictionary<int, CustomMerchantService>();
+
+        public static bool HasCustomMerchantService(int npcFactionId)
+        {
+            return customMerchantServices.ContainsKey(npcFactionId);
+        }
+
+        public static bool RegisterMerchantService(int npcFactionId, CustomMerchantService service, string serviceName)
+        {
+            DaggerfallUnity.LogMessage("RegisterMerchantService: " + npcFactionId + " with service: " + serviceName, true);
+            if (!customMerchantServices.ContainsKey(npcFactionId))
+            {
+                customMerchantServices.Add(npcFactionId, service);
+                customMerchantServiceNames.Add(npcFactionId, serviceName);
+                return true;
+            }
+            return false;
+        }
+
+        public static bool GetCustomMerchantService(int npcFactionId, out CustomMerchantService customMerchantService)
+        {
+            return customMerchantServices.TryGetValue(npcFactionId, out customMerchantService);
+        }
+
+        public static string GetCustomMerchantServiceLabel(int npcFactionId)
+        {
+            string serviceLabel;
+            if (customMerchantServiceNames.TryGetValue(npcFactionId, out serviceLabel))
+                return serviceLabel;
+            else
+                return "?";
+        }
+
+
+        #endregion
+
+        #region Guild service registration
+
         public delegate void CustomGuildService(IUserInterfaceWindow window);
 
         // Store for extra guild NPC services (i.e. from mods)
         private static Dictionary<int, GuildServices> guildNpcServices = new Dictionary<int, GuildServices>();
         private static Dictionary<int, string> customNpcServiceNames = new Dictionary<int, string>();
+        private static Dictionary<int, DaggerfallShortcut.Buttons> customNpcServiceButtons = new Dictionary<int, DaggerfallShortcut.Buttons>();
         private static Dictionary<int, CustomGuildService> customNpcServices = new Dictionary<int, CustomGuildService>();
 
         public static bool HasGuildService(int npcFactionId)
@@ -166,13 +210,14 @@ namespace DaggerfallWorkshop.Game.Guilds
             return false;
         }
 
-        public static bool RegisterGuildService(int npcFactionId, CustomGuildService service, string serviceName)
+        public static bool RegisterGuildService(int npcFactionId, CustomGuildService service, string serviceName, DaggerfallShortcut.Buttons serviceButton = DaggerfallShortcut.Buttons.None)
         {
             DaggerfallUnity.LogMessage("RegisterGuildService: " + npcFactionId + " with service: " + serviceName, true);
             if (!customNpcServices.ContainsKey(npcFactionId))
             {
                 customNpcServices.Add(npcFactionId, service);
                 customNpcServiceNames.Add(npcFactionId, serviceName);
+                customNpcServiceButtons.Add(npcFactionId, serviceButton);
                 return true;
             }
             return false;
@@ -300,44 +345,44 @@ namespace DaggerfallWorkshop.Game.Guilds
             switch (service)
             {
                 case GuildServices.Training:
-                    return HardStrings.serviceTraining;
+                    return TextManager.Instance.GetLocalizedText("serviceTraining");
                 case GuildServices.Quests:
-                    return HardStrings.serviceQuests;
+                    return TextManager.Instance.GetLocalizedText("serviceQuests");
                 case GuildServices.Repair:
-                    return HardStrings.serviceRepairs;
+                    return TextManager.Instance.GetLocalizedText("serviceRepairs");
                 case GuildServices.Identify:
-                    return HardStrings.serviceIdentify;
+                    return TextManager.Instance.GetLocalizedText("serviceIdentify");
                 case GuildServices.Donate:
-                    return HardStrings.serviceDonate;
+                    return TextManager.Instance.GetLocalizedText("serviceDonate");
                 case GuildServices.CureDisease:
-                    return HardStrings.serviceCure;
+                    return TextManager.Instance.GetLocalizedText("serviceCure");
                 case GuildServices.BuyPotions:
-                    return HardStrings.serviceBuyPotions;
+                    return TextManager.Instance.GetLocalizedText("serviceBuyPotions");
                 case GuildServices.MakePotions:
-                    return HardStrings.serviceMakePotions;
+                    return TextManager.Instance.GetLocalizedText("serviceMakePotions");
                 case GuildServices.BuySpells:
                 case GuildServices.BuySpellsMages:
-                    return HardStrings.serviceBuySpells;
+                    return TextManager.Instance.GetLocalizedText("serviceBuySpells");
                 case GuildServices.MakeSpells:
-                    return HardStrings.serviceMakeSpells;
+                    return TextManager.Instance.GetLocalizedText("serviceMakeSpells");
                 case GuildServices.BuyMagicItems:
-                    return HardStrings.serviceBuyMagicItems;
+                    return TextManager.Instance.GetLocalizedText("serviceBuyMagicItems");
                 case GuildServices.MakeMagicItems:
-                    return HardStrings.serviceMakeMagicItems;
+                    return TextManager.Instance.GetLocalizedText("serviceMakeMagicItems");
                 case GuildServices.SellMagicItems:
-                    return HardStrings.serviceSellMagicItems;
+                    return TextManager.Instance.GetLocalizedText("serviceSellMagicItems");
                 case GuildServices.Teleport:
-                    return HardStrings.serviceTeleport;
+                    return TextManager.Instance.GetLocalizedText("serviceTeleport");
                 case GuildServices.DaedraSummoning:
-                    return HardStrings.serviceDaedraSummon;
+                    return TextManager.Instance.GetLocalizedText("serviceDaedraSummon");
                 case GuildServices.Spymaster:
-                    return HardStrings.serviceSpymaster;
+                    return TextManager.Instance.GetLocalizedText("serviceSpymaster");
                 case GuildServices.BuySoulgems:
-                    return HardStrings.serviceBuySoulgems;
+                    return TextManager.Instance.GetLocalizedText("serviceBuySoulgems");
                 case GuildServices.ReceiveArmor:
-                    return HardStrings.serviceReceiveArmor;
+                    return TextManager.Instance.GetLocalizedText("serviceReceiveArmor");
                 case GuildServices.ReceiveHouse:
-                    return HardStrings.serviceReceiveHouse;
+                    return TextManager.Instance.GetLocalizedText("serviceReceiveHouse");
 
                 default:
                     string serviceName;
@@ -347,5 +392,60 @@ namespace DaggerfallWorkshop.Game.Guilds
                         return "?";
             }
         }
+
+        public static DaggerfallShortcut.Buttons GetServiceShortcutButton(GuildServices service)
+        {
+            switch (service)
+            {
+                case GuildServices.Training:
+                    return DaggerfallShortcut.Buttons.GuildsTraining;
+                case GuildServices.Quests:
+                    return DaggerfallShortcut.Buttons.GuildsGetQuest;
+                case GuildServices.Repair:
+                    return DaggerfallShortcut.Buttons.GuildsRepair;
+                case GuildServices.Identify:
+                    return DaggerfallShortcut.Buttons.GuildsIdentify;
+                case GuildServices.Donate:
+                    return DaggerfallShortcut.Buttons.GuildsDonate;
+                case GuildServices.CureDisease:
+                    return DaggerfallShortcut.Buttons.GuildsCure;
+                case GuildServices.BuyPotions:
+                    return DaggerfallShortcut.Buttons.GuildsBuyPotions;
+                case GuildServices.MakePotions:
+                    return DaggerfallShortcut.Buttons.GuildsMakePotions;
+                case GuildServices.BuySpells:
+                case GuildServices.BuySpellsMages:
+                    return DaggerfallShortcut.Buttons.GuildsBuySpells;
+                case GuildServices.MakeSpells:
+                    return DaggerfallShortcut.Buttons.GuildsMakeSpells;
+                case GuildServices.BuyMagicItems:
+                    return DaggerfallShortcut.Buttons.GuildsBuyMagicItems;
+                case GuildServices.MakeMagicItems:
+                    return DaggerfallShortcut.Buttons.GuildsMakeMagicItems;
+                case GuildServices.SellMagicItems:
+                    return DaggerfallShortcut.Buttons.GuildsSellMagicItems;
+                case GuildServices.Teleport:
+                    return DaggerfallShortcut.Buttons.GuildsTeleport;
+                case GuildServices.DaedraSummoning:
+                    return DaggerfallShortcut.Buttons.GuildsDaedraSummon;
+                case GuildServices.Spymaster:
+                    return DaggerfallShortcut.Buttons.GuildsSpymaster;
+                case GuildServices.BuySoulgems:
+                    return DaggerfallShortcut.Buttons.GuildsBuySoulgems;
+                case GuildServices.ReceiveArmor:
+                    return DaggerfallShortcut.Buttons.GuildsReceiveArmor;
+                case GuildServices.ReceiveHouse:
+                    return DaggerfallShortcut.Buttons.GuildsReceiveHouse;
+
+                default:
+                    DaggerfallShortcut.Buttons serviceButton;
+                    if (customNpcServiceButtons.TryGetValue((int)service, out serviceButton))
+                        return serviceButton;
+                    else
+                        return DaggerfallShortcut.Buttons.None;
+            }
+        }
+
+        #endregion
     }
 }

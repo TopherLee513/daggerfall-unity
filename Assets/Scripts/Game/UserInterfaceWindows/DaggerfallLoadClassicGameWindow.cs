@@ -1,5 +1,5 @@
 ﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -188,7 +188,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         void OpenSelectedSaveGame()
         {
             Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            InputManager.Instance.CursorVisible = false;
 
             // Setup start behaviour
             StartGameBehaviour startGameBehaviour = FindStartGameBehaviour();
@@ -212,16 +212,19 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void LoadGameButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             OpenSelectedSaveGame();
         }
 
         private void SaveGame_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             SelectSaveGame((int)sender.Tag);
         }
 
         private void SaveGame_OnMouseDoubleClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             SelectSaveGame((int)sender.Tag);
             OpenSelectedSaveGame();
         }

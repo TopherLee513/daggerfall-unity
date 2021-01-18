@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -11,6 +11,7 @@
 
 using System.Collections.Generic;
 using DaggerfallConnect;
+using DaggerfallConnect.Arena2;
 using DaggerfallConnect.FallExe;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Items;
@@ -28,9 +29,6 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
         {
             properties.Key = EffectKey;
             properties.ClassicKey = MakeClassicKey(12, 255);
-            properties.GroupName = TextManager.Instance.GetText("ClassicEffects", "soulTrap");
-            properties.SpellMakerDescription = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1603);
-            properties.SpellBookDescription = DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1303);
             properties.ShowSpellIcon = false;
             properties.SupportDuration = true;
             properties.SupportChance = true;
@@ -41,6 +39,10 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             properties.DurationCosts = MakeEffectCosts(60, 68);
             properties.ChanceCosts = MakeEffectCosts(40, 68);
         }
+
+        public override string GroupName => TextManager.Instance.GetLocalizedText("soulTrap");
+        public override TextFile.Token[] SpellMakerDescription => DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1603);
+        public override TextFile.Token[] SpellBookDescription => DaggerfallUnity.Instance.TextProvider.GetRSCTokens(1303);
 
         public override bool ChanceSuccess
         {
@@ -81,7 +83,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                     End();
                     return;
             }
-            DaggerfallUI.AddHUDText(TextManager.Instance.GetText(textDatabase, messageID));
+            DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText(messageID));
         }
 
         protected override bool IsLikeKind(IncumbentEffect other)
@@ -112,7 +114,7 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
             return RollChance();
         }
 
-        public bool FillEmptyTrapItem(MobileTypes soulType)
+        public static bool FillEmptyTrapItem(MobileTypes soulType, bool azurasStarOnly = false)
         {
             // In classic, the player's items are iterated through and the first instance found of an empty soul trap or Azura's Star is used.
             // Whichever is chosen first would depend on the order of the list of items, which would probably be the order in which the items were added to the inventory.
@@ -131,6 +133,11 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
                 }
             }
 
+            // Exit if trapping to Azura's Star and it was not found or already full
+            if (emptyTrap == null && azurasStarOnly)
+                return false;
+
+            // Get another trap
             if (emptyTrap == null)
             {
                 // Get empty soul trap

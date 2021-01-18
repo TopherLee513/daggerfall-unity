@@ -32,12 +32,14 @@ mouseSensitivity,                                   Mouse Sensitivity
 mouseSensitivityInfo,                               Mouse look sensitivity.
 weaponSensitivity,                                  Weapon Sensitivity
 weaponSensitivityInfo,                              Sensitivity of weapon swings to mouse movements
-moveSpeedAcceleration,                              Movement Acceleration
-moveSpeedAccelerationInfo,                          Movement acceleration/deceleration rate (max=instant)
+movementAcceleration,                               Movement Acceleration
+movementAccelerationInfo,                           Adds a small amount of acceleration/deceleration during movement
 weaponAttackThreshold,                              WeaponAttackThreshold
 weaponAttackThresholdInfo,                          Minimum mouse gesture travel distance for an attack
 soundFont,                                          SoundFont
 soundFontInfo,                                      Active soundfont
+alternateMusic,                                     Alternate Music
+alternateMusicInfo,                                 Use the OPL3-optimized version of the soundtrack.
 soundVolume,                                        Sound volume
 soundVolumeInfo,                                    Volume of sound.
 musicVolume,                                        Music volume
@@ -50,13 +52,15 @@ instantRepairs,                                     Instant repair services
 instantRepairsInfo,                                 Disables waiting for repairs and makes them instantaneous
 bowDrawback,                                        Bows - draw and release
 bowDrawbackInfo,                                    Enables bow drawback while holding RH mouse; release to fire
+toggleSneak,                                        Toggle Sneak
+toggleSneakInfo,                                    Allows the Sneak action to be toggled rather than held
 
 toolTips,                                           Tool Tips
-toolTipsInfo,                                       Shows informations about GUI items
+toolTipsInfo,                                       Shows information about GUI items
 toolTipDelayInSeconds,                              Delay
 toolTipDelayInSecondsInfo,                          Tooltip delay in seconds
 toolTipTextColor,                                   Text Color
-toolTipTextColorInfo,                               Font color for tooltips text
+toolTipTextColorInfo,                               Font color for tooltips' text
 toolTipBackgroundColor,                             Background Color
 toolTipBackgroundColorInfo,                         Background color for tooltips
 crosshair,                                          Crosshair
@@ -64,7 +68,7 @@ crosshairInfo,                                      Enable Crosshair on HUD
 vitalsIndicators,                                   Vitals Indicators
 vitalsIndicatorsInfo,                               Show indicators on vitals bars that display changes in vitals
 interactionModeIcon,                                Interaction Mode Icon
-interactionModeIconInfo,                            Style of contex icon for interaction mode
+interactionModeIconInfo,                            Style of context icon for interaction mode
 arrowCounter,                                       Arrow counter
 arrowCounterInfo,                                   Enable an arrow counter on the HUD when using bows
 freeScaling,                                        Free scaling
@@ -77,16 +81,22 @@ enhancedItemLists,                                  Enhanced Item Lists
 enhancedItemListsInfo,                              Inventory 16x item grid
 enableModernConversationStyleInTalkWindow,          TalkWindow Modern Style
 enableModernConversationStyleInTalkWindowInfo,      Modern Conversation Style In TalkWindow
+iconsPositioningScheme,                             Buff Icons Layout
+iconsPositioningSchemeInfo,                         Size and position of onscreen (de)buff icons
 helmAndShieldMaterialDisplay,                       Helm and Shield Material Display
 helmAndShieldMaterialDisplayInfo,                   Show material for helms and shields in info popups and tooltips
 geographicBackgrounds,                              Geographic backgrounds
 geographicBackgroundsInfo,                          Contextual character backgrounds based on geographic location
 dungeonExitWagonPrompt,                             Dungeon wagon access prompt
 dungeonExitWagonPromptInfo,                         Prompt for wagon access on dungeon exit. (Wagon is always accessible within 5m of exit)
+travelMapLocationsOutline,                          Outline regional map locations
+travelMapLocationsOutlineInfo,                      Draw an outline around locations on regional maps to improve visibility
+guildQuestListBox,                                  Guild quest player selection
+guildQuestListBoxInfo,                              Presents eligible guild quests in a list box
+bowLeftHandWithSwitching,                           Equip bows in left hand only
+bowLeftHandWithSwitchingInfo,                       Equip bows in left hand and allow 1H weapon switching - switching has a short delay
 loiterLimitInHours,                                 Maximum loiter time in hours
 loiterLimitInHoursInfo,                             Change default loiter time limit in hours
-guildQuestListBox,                                  Guild quest player selection
-guildQuestListBoxInfo,                              Presents elligible guild quests in a list box
 
 modSystem,                                          Mod System
 modSystemInfo,                                      Enable support for mods.
@@ -125,6 +135,8 @@ fullscreen,                                         Fullscreen
 fullscreenInfo,                                     Enable fullscreen
 exclusiveFullscreen,                                Exclusive Fullscreen
 exclusiveFullscreenInfo,                            Enable exclusive fullscreen
+runInBackground,                                    Run in background
+runInBackgroundInfo,                                Should the game keep running when it loses focus
 qualityLevel,                                       Quality Level
 qualityLevelInfo,                                   General graphic quality
 mainFilterMode,                                     Main Filter
@@ -144,11 +156,11 @@ dungeonLightShadowsInfo,                            Dungeon lights cast shadows
 interiorLightShadows,                               Interior Light Shadows
 interiorLightShadowsInfo,                           Interior lights cast shadows
 exteriorLightShadows,                               Exterior Light Shadows
-exteriorLightShadowsInfo,                           Exterior sunlight cast shadows
-useLegacyDeferred,                                  Use Legacy Deferred
-useLegacyDeferredInfo,                              Legacy rendering path
+exteriorLightShadowsInfo,                           Exterior sunlight casts shadows
 retroRenderingMode,                                 Retro Rendering Mode
 retroRenderingModeInfo,                             3D world rendered at low resolution while UI remains at set resolution
+postProcessingInRetroMode,                          Retro Rendering Postprocessing
+postProcessingInRetroModeInfo,                      Color palette emulation (Posterization=fast Palettization=accurate)
 
 - Options shared among sliders. Missing keys use default text.
 

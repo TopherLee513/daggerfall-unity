@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -12,11 +12,8 @@
 using System;
 using UnityEngine;
 using DaggerfallWorkshop.Game.UserInterface;
-using System.Collections;
-using System.Collections.Generic;
 using DaggerfallConnect.Utility;
 using DaggerfallConnect.Arena2;
-using DaggerfallWorkshop.Game.Formulas;
 using DaggerfallWorkshop.Game.Utility;
 using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallWorkshop.Utility;
@@ -32,50 +29,58 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         const string nativeImgName = "TRAV0I04.IMG";
 
         const float secondsCountdownTickFastTravel = 0.05f; // time used for fast travel countdown for one tick
-
-        TravelTimeCalculator travelTimeCalculator = new TravelTimeCalculator();
+        protected TravelTimeCalculator travelTimeCalculator = new TravelTimeCalculator();
 
         Color32 toggleColor = new Color32(85, 117, 48, 255);
+        const string greenCheckboxTextureFilename = "GreenCheckbox";
 
         Panel travelPanel;
         Panel speedToggleColorPanel;
         Panel transportToggleColorPanel;
         Panel sleepToggleColorPanel;
 
-        Button beginButton;
-        Button exitButton;
-        Button speedToggleButton;
-        Button transportModeToggleButton;
-        Button campOutToggleButton;
-        Button innToggleButton;
+        protected Button beginButton;
+        protected Button exitButton;
+        protected Button cautiousToggleButton;
+        protected Button recklessToggleButton;
+        protected Button footHorseToggleButton;
+        protected Button shipToggleButton;
+        protected Button campOutToggleButton;
+        protected Button innToggleButton;
         Texture2D nativeTexture;
+        Texture2D greenCheckboxTexture;
 
         //rects
         Rect nativePanelRect        = new Rect(49, 28, 223, 97);
         Rect exitButtonRect         = new Rect(222, 112, 48, 10);
         Rect beginButtonRect        = new Rect(222, 98, 48, 10);
-        Rect speedButtonRect        = new Rect(50, 51, 108, 20);
-        Rect transportButtonRect    = new Rect(163, 51, 108, 20);
+        Rect cautiousButtonRect     = new Rect(50, 51, 108, 9);
+        Rect recklessButtonRect     = new Rect(50, 61, 108, 9);
+        Rect footHorseButtonRect    = new Rect(163, 51, 108, 9);
+        Rect shipButtonRect         = new Rect(163, 61, 108, 9);
         Rect innsButtonRect         = new Rect(50, 83, 108, 9);
         Rect campoutButtonRect      = new Rect(163, 83, 108, 9);
 
-        Vector2 colorPanelSize      = new Vector2(4.5f, 5f);
-        Vector2 cautiousPanelPos    = new Vector2(52, 53.25f);
-        Vector2 recklessPanelPos    = new Vector2(52, 63.25f);
-        Vector2 innPanelPos         = new Vector2(52, 85.25f);
-        Vector2 campoutPos          = new Vector2(165, 85.25f);
-        Vector2 footPos             = new Vector2(165, 53.25f);
+        Vector2 colorPanelSize      = new Vector2(4.75f, 4.75f);
+
+        Vector2 cautiousPanelPos    = new Vector2(52.25f, 53);
+        Vector2 recklessPanelPos    = new Vector2(52.25f, 63.25f);
+        Vector2 innPanelPos         = new Vector2(52.25f, 85.5f);
+        Vector2 campoutPos          = new Vector2(165, 85.5f);
+        Vector2 footPos             = new Vector2(165, 53);
         Vector2 shipPos             = new Vector2(165, 63.25f);
         DFPosition endPos           = new DFPosition(109, 158);
 
-        TextLabel availableGoldLabel;
-        TextLabel tripCostLabel;
-        TextLabel travelTimeLabel;
+        protected TextLabel availableGoldLabel;
+        protected TextLabel tripCostLabel;
+        protected TextLabel travelTimeLabel;
 
-        int travelTimeMinutes;
-        int countdownValueTravelTimeDays; // used for remaining days in fast travel countdown
-        bool doFastTravel = false; // flag used to indicate Update() function that fast travel should happen
-        float waitTimer = 0;
+        protected int travelTimeTotalMins;
+        protected int countdownValueTravelTimeDays; // used for remaining days in fast travel countdown
+        protected bool doFastTravel = false; // flag used to indicate Update() function that fast travel should happen
+        protected float waitTimer = 0;
+
+        bool isCloseWindowDeferred = false;
 
         bool speedCautious  = true;
         bool travelShip     = true;
@@ -90,7 +95,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         #region Properties
 
         public DFPosition EndPos { get { return endPos; } internal set { endPos = value;} }
-        internal DaggerfallTravelMapWindow TravelWindow { get { return travelWindow; } set { travelWindow = value; } }
+        public DaggerfallTravelMapWindow TravelWindow { get { return travelWindow; } internal set { travelWindow = value; } }
         public bool SpeedCautious { get { return speedCautious;} set {speedCautious = value; } }
         public bool TravelShip { get { return travelShip;} set { travelShip = value;} }
         public bool SleepModeInn { get { return sleepModeInn; } set { sleepModeInn = value; } }
@@ -118,6 +123,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             if (!nativeTexture)
                 throw new System.Exception("DaggerfallTravelMap: Could not load native texture.");
 
+            greenCheckboxTexture = DaggerfallUI.GetTextureFromResources(greenCheckboxTextureFilename);
+
             ParentPanel.BackgroundColor = Color.clear;
 
             travelPanel = DaggerfallUI.AddPanel(nativePanelRect, NativePanel);
@@ -126,46 +133,79 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             availableGoldLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(148, 97), "0", NativePanel);
             availableGoldLabel.MaxCharacters = 12;
 
-            tripCostLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(117,107), "0", NativePanel);
+            tripCostLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(117, 107), "0", NativePanel);
             tripCostLabel.MaxCharacters = 18;
 
-            travelTimeLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(129,117), "0", NativePanel);
+            travelTimeLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(129, 117), "0", NativePanel);
             travelTimeLabel.MaxCharacters = 16;
 
             speedToggleColorPanel = DaggerfallUI.AddPanel(new Rect(cautiousPanelPos, colorPanelSize), NativePanel);
-            speedToggleColorPanel.BackgroundColor = toggleColor;
+            SetToggleLook(speedToggleColorPanel);
 
             sleepToggleColorPanel = DaggerfallUI.AddPanel(new Rect(innPanelPos, colorPanelSize), NativePanel);
-            sleepToggleColorPanel.BackgroundColor = toggleColor;
+            SetToggleLook(sleepToggleColorPanel);
 
             transportToggleColorPanel = DaggerfallUI.AddPanel(new Rect(footPos, colorPanelSize), NativePanel);
-            transportToggleColorPanel.BackgroundColor = toggleColor;
+            SetToggleLook(transportToggleColorPanel);
 
             SetupButtons();
             Refresh();
         }
 
-
+        private void SetToggleLook(Panel toggle)
+        {
+            if (greenCheckboxTexture)
+                toggle.BackgroundTexture = greenCheckboxTexture;
+            else
+                toggle.BackgroundColor = toggleColor;
+        }
 
         void SetupButtons()
         {
             beginButton = DaggerfallUI.AddButton(beginButtonRect, NativePanel );
             beginButton.OnMouseClick += BeginButtonOnClickHandler;
+            beginButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.TravelBegin);
 
             exitButton = DaggerfallUI.AddButton(exitButtonRect, NativePanel);
             exitButton.OnMouseClick += ExitButtonOnClickHandler;
+            exitButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.TravelExit);
+            exitButton.OnKeyboardEvent += ExitButton_OnKeyboardEvent;
 
-            speedToggleButton = DaggerfallUI.AddButton(speedButtonRect, NativePanel);
-            speedToggleButton.OnMouseClick += SpeedButtonOnClickHandler;
+            cautiousToggleButton = DaggerfallUI.AddButton(cautiousButtonRect, NativePanel);
+            cautiousToggleButton.OnMouseClick += SpeedButtonOnClickHandler;
+            cautiousToggleButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.TravelSpeedToggle);
+            cautiousToggleButton.OnKeyboardEvent += SpeedButton_OnKeyboardEvent;
+            cautiousToggleButton.OnMouseScrollUp += ToggleSpeedButtonOnScrollHandler;
+            cautiousToggleButton.OnMouseScrollDown += ToggleSpeedButtonOnScrollHandler;
 
-            transportModeToggleButton = DaggerfallUI.AddButton(transportButtonRect, NativePanel);
-            transportModeToggleButton.OnMouseClick += TransportModeButtonOnClickHandler;
+            recklessToggleButton = DaggerfallUI.AddButton(recklessButtonRect, NativePanel);
+            recklessToggleButton.OnMouseClick += SpeedButtonOnClickHandler;
+            recklessToggleButton.OnMouseScrollUp += ToggleSpeedButtonOnScrollHandler;
+            recklessToggleButton.OnMouseScrollDown += ToggleSpeedButtonOnScrollHandler;
+
+            footHorseToggleButton = DaggerfallUI.AddButton(footHorseButtonRect, NativePanel);
+            footHorseToggleButton.OnMouseClick += TransportModeButtonOnClickHandler;
+            footHorseToggleButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.TravelTransportModeToggle);
+            footHorseToggleButton.OnKeyboardEvent += TransportModeButtonOnKeyboardHandler;
+            footHorseToggleButton.OnMouseScrollUp += ToggleTransportModeButtonOnScrollHandler;
+            footHorseToggleButton.OnMouseScrollDown += ToggleTransportModeButtonOnScrollHandler;
+
+            shipToggleButton = DaggerfallUI.AddButton(shipButtonRect, NativePanel);
+            shipToggleButton.OnMouseClick += TransportModeButtonOnClickHandler;
+            shipToggleButton.OnMouseScrollUp += ToggleTransportModeButtonOnScrollHandler;
+            shipToggleButton.OnMouseScrollDown += ToggleTransportModeButtonOnScrollHandler;
 
             innToggleButton = DaggerfallUI.AddButton(innsButtonRect, NativePanel);
             innToggleButton.OnMouseClick += SleepModeButtonOnClickHandler;
+            innToggleButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.TravelInnCampOutToggle);
+            innToggleButton.OnKeyboardEvent += SleepModeButtonOnKeyboardandler;
+            innToggleButton.OnMouseScrollUp += ToggleSleepModeButtonOnScrollHandler;
+            innToggleButton.OnMouseScrollDown += ToggleSleepModeButtonOnScrollHandler;
 
             campOutToggleButton = DaggerfallUI.AddButton(campoutButtonRect, NativePanel);
             campOutToggleButton.OnMouseClick += SleepModeButtonOnClickHandler;
+            campOutToggleButton.OnMouseScrollUp += ToggleSleepModeButtonOnScrollHandler;
+            campOutToggleButton.OnMouseScrollDown += ToggleSleepModeButtonOnScrollHandler;
         }
 
 
@@ -202,7 +242,6 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                     DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
                     performFastTravel();
                 }
-
             }
         }
 
@@ -212,14 +251,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         #region Methods
 
         //Update when player pushes buttons etc.
-        void Refresh()
+        protected virtual void Refresh()
         {
             UpdateTogglePanels();
             UpdateLabels();
         }
 
         //Updates the positions for the panels to indicate which button is selected
-        void UpdateTogglePanels()
+        protected virtual void UpdateTogglePanels()
         {
             if (speedCautious)
                 speedToggleColorPanel.Position = cautiousPanelPos;
@@ -236,22 +275,22 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         }
 
         //Updates text labels
-        void UpdateLabels()
+        protected virtual void UpdateLabels()
         {
             availableGoldLabel.Text = GameManager.Instance.PlayerEntity.GoldPieces.ToString();
-            travelTimeMinutes = travelTimeCalculator.CalculateTravelTime(endPos, speedCautious, sleepModeInn, travelShip, hasHorse, hasCart);
+            travelTimeTotalMins = travelTimeCalculator.CalculateTravelTime(endPos, speedCautious, sleepModeInn, travelShip, hasHorse, hasCart);
 
             // Players can have fast travel benefit from guild memberships
-            travelTimeMinutes = GameManager.Instance.GuildManager.FastTravel(travelTimeMinutes);
+            travelTimeTotalMins = GameManager.Instance.GuildManager.FastTravel(travelTimeTotalMins);
 
-            int travelTimeDaysTotal = (travelTimeMinutes / 1440);
+            int travelTimeDaysTotal = (travelTimeTotalMins / 1440);
 
             // Classic always adds 1. For DF Unity, only add 1 if there is a remainder to round up.
-            if ((travelTimeMinutes % 1440) > 0)
+            if ((travelTimeTotalMins % 1440) > 0)
                 travelTimeDaysTotal += 1;
 
             travelTimeCalculator.CalculateTripCost(
-                travelTimeMinutes,
+                travelTimeTotalMins,
                 sleepModeInn,
                 hasShip,
                 travelShip
@@ -263,7 +302,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             countdownValueTravelTimeDays = travelTimeDaysTotal;
         }
 
-        bool TickCountdown()
+        protected virtual bool TickCountdown()
         {
             bool finished = false;
 
@@ -299,16 +338,20 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                     GameManager.Instance.PlayerEntity.CurrentMagicka = GameManager.Instance.PlayerEntity.MaxMagicka;
             }
 
-            DaggerfallUnity.WorldTime.DaggerfallDateTime.RaiseTime(travelTimeMinutes * 60);
+            DaggerfallUnity.WorldTime.DaggerfallDateTime.RaiseTime(travelTimeTotalMins * 60);
 
             // Halt random enemy spawns for next playerEntity update so player isn't bombarded by spawned enemies at the end of a long trip
             GameManager.Instance.PlayerEntity.PreventEnemySpawns = true;
 
-            // Vampires and characters with Damage from Sunlight disadvantage always arrive just after 6pm regardless of travel type
+            // Vampires and characters with Damage from Sunlight disadvantage never arrive between 6am and 6pm regardless of travel type
             // Otherwise raise arrival time to just after 7am if cautious travel would arrive at night
             if (GameManager.Instance.PlayerEffectManager.HasVampirism() || GameManager.Instance.PlayerEntity.Career.DamageFromSunlight)
             {
-                DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.RaiseTime((DaggerfallDateTime.DuskHour - DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.Hour) * 3600);
+                if (DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.IsDay)
+                {
+                    DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.RaiseTime(
+                        (DaggerfallDateTime.DuskHour - DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.Hour) * 3600);
+                }
             }
             else if (speedCautious)
             {
@@ -339,13 +382,13 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         // Return whether player has enough gold for the selected travel options
         // Taverns only accept gold pieces
-        bool enoughGoldCheck()
+        protected virtual bool enoughGoldCheck()
         {
             return (GameManager.Instance.PlayerEntity.GetGoldAmount() >= travelTimeCalculator.TotalCost) &&
                    (GameManager.Instance.PlayerEntity.GoldPieces >= travelTimeCalculator.PiecesCost);
         }
 
-        void showNotEnoughGoldPopup()
+        protected virtual void showNotEnoughGoldPopup()
         {
             const int notEnoughGoldTextId = 454;
 
@@ -364,10 +407,11 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         #region events
 
-        public void BeginButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
+        public virtual void BeginButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
         {
             Refresh();
 
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             // Warns player if they have a disease
             if (GameManager.Instance.PlayerEffectManager.DiseaseCount > 0 || GameManager.Instance.PlayerEffectManager.PoisonCount > 0)
             {
@@ -387,6 +431,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         public override void CancelWindow()
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             doFastTravel = false;
             base.CancelWindow();
         }
@@ -394,8 +439,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         /// <summary>
         /// Button handler for travel-with-incubating-disease confirmation pop up.
         /// </summary>
-        void ConfirmTravelPopupDiseasedButtonClick(DaggerfallMessageBox sender, DaggerfallMessageBox.MessageBoxButtons messageBoxButton)
+        protected virtual void ConfirmTravelPopupDiseasedButtonClick(DaggerfallMessageBox sender, DaggerfallMessageBox.MessageBoxButtons messageBoxButton)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             sender.CloseWindow();
 
             if (messageBoxButton == DaggerfallMessageBox.MessageBoxButtons.Yes)
@@ -406,7 +452,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 return;
         }
 
-        void CallFastTravelGoldCheck()
+        protected virtual void CallFastTravelGoldCheck()
         {
             if (!enoughGoldCheck())
             {
@@ -422,26 +468,85 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             doFastTravel = true; // initiate fast travel (Update() function will perform fast travel when this flag is true)
         }
 
-        public void ExitButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
+        public virtual void ExitButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             doFastTravel = false;
             DaggerfallUI.Instance.UserInterfaceManager.PopWindow();
         }
 
-        public void SpeedButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
+        protected virtual void ExitButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
         {
+            if (keyboardEvent.type == EventType.KeyDown)
+            {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+                isCloseWindowDeferred = true;
+            }
+            else if (keyboardEvent.type == EventType.KeyUp && isCloseWindowDeferred)
+            {
+                isCloseWindowDeferred = false;
+                doFastTravel = false;
+                DaggerfallUI.Instance.UserInterfaceManager.PopWindow();
+            }
+        }
+
+        public virtual void SpeedButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
+        {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+
+            speedCautious = (sender == cautiousToggleButton);
+            Refresh();
+        }
+
+        public virtual void SpeedButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+                ToggleSpeedButtonOnScrollHandler(sender);
+        }
+
+        public virtual void ToggleSpeedButtonOnScrollHandler(BaseScreenComponent sender)
+        {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             speedCautious = !speedCautious;
             Refresh();
         }
 
-        public void TransportModeButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
+        public virtual void TransportModeButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+            travelShip = (sender == shipToggleButton);
+            Refresh();
+        }
+
+        public virtual void TransportModeButtonOnKeyboardHandler(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+                ToggleTransportModeButtonOnScrollHandler(sender);
+        }
+
+        public virtual void ToggleTransportModeButtonOnScrollHandler(BaseScreenComponent sender)
+        {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             travelShip = !travelShip;
             Refresh();
         }
 
-        public void SleepModeButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
+        public virtual void SleepModeButtonOnClickHandler(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+            sleepModeInn = (sender == innToggleButton);
+            Refresh();
+        }
+
+        public virtual void SleepModeButtonOnKeyboardandler(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+                ToggleSleepModeButtonOnScrollHandler(sender);
+        }
+
+        public virtual void ToggleSleepModeButtonOnScrollHandler(BaseScreenComponent sender)
+        {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             sleepModeInn = !sleepModeInn;
             Refresh();
         }

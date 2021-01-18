@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -16,6 +16,7 @@ using System.Linq;
 using UnityEngine;
 using FullSerializer;
 using IniParser.Model;
+using DaggerfallWorkshop.Utility.AssetInjection;
 
 namespace DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings
 {
@@ -181,23 +182,18 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings
                 }
             }
 
-            // Other imported presets (readonly)
+            // Imported presets (readonly)
+            Presets.AddRange(TextAssetReader.ReadAll<Preset>(string.Format("Presets/{0}", mod.FileName), "json"));
+
+            // Legacy imported presets (readonly)
             foreach (string path in Directory.GetFiles(mod.DirPath, string.Format("{0}_presets_*.json", mod.FileName)))
             {
                 List<Preset> importedPresets = new List<Preset>();
                 if (TryDeserialize(path, ref importedPresets))
                     Presets.AddRange(importedPresets);
-            }
-            string presetsDirectory = Path.Combine(mod.ConfigurationDirectory, "Presets");
-            if (Directory.Exists(presetsDirectory))
-            {
-                foreach (string path in Directory.GetFiles(presetsDirectory, "*.json"))
-                {
-                    List<Preset> importedPresets = new List<Preset>();
-                    if (TryDeserialize(path, ref importedPresets))
-                        Presets.AddRange(importedPresets);
-                }
-            }
+
+                Debug.LogWarningFormat("Imported legacy preset for {0}.");
+            }    
 
             HasLoadedPresets = true;
         }

@@ -1,10 +1,10 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Michael Rauter (a.k.a. Nystul)
-// Contributors:    Lypyl, Interkarma
+// Contributors:    Lypyl, Interkarma, Numidium
 // 
 // Notes:
 //
@@ -142,8 +142,6 @@ namespace DaggerfallWorkshop.Game
 
         #region Fields
 
-        const string textDatabase = "DaggerfallUI";
-
         const string ResourceNameRotateArrow = "RotateArrow";
 
         const string NameGamobjectBeacons = "Beacons";
@@ -274,11 +272,6 @@ namespace DaggerfallWorkshop.Game
         #endregion
 
         #region Properties
-
-        public static string TextDatabase
-        {
-            get { return textDatabase; }
-        }
 
         /// <summary>
         /// DaggerfallAutomapWindow script will use this to get automap layer
@@ -569,27 +562,27 @@ namespace DaggerfallWorkshop.Game
                 // if hit geometry is player position beacon
                 else if (nearestHit.Value.transform.name == NameGameobjectBeaconPlayerPosition)
                 {
-                    return TextManager.Instance.GetText(textDatabase, "automapPlayerPositionBeacon");
+                    return TextManager.Instance.GetLocalizedText("automapPlayerPositionBeacon");
                 }
                 // if hit geometry is player rotation pivot axis or rotation indicator arrows
                 else if (nearestHit.Value.transform.name == NameGameobjectBeaconRotationPivotAxis || nearestHit.Value.transform.name == NameGameobjectRotateArrow)
                 {
-                    return TextManager.Instance.GetText(textDatabase, "automapRotationPivotAxis");
+                    return TextManager.Instance.GetLocalizedText("automapRotationPivotAxis");
                 }
                 // if hit geometry is dungeon entrance/exit position beacon
                 else if (nearestHit.Value.transform.name == NameGameobjectBeaconEntrancePositionMarker)
                 {
-                    return TextManager.Instance.GetText(textDatabase, "automapEntranceExitPositionBeacon");
+                    return TextManager.Instance.GetLocalizedText("automapEntranceExitPositionBeacon");
                 }
                 // if hit geometry is dungeon entrance/exit position marker
                 else if (nearestHit.Value.transform.name == NameGameobjectCubeEntrancePositionMarker)
                 {
-                    return TextManager.Instance.GetText(textDatabase, "automapEntranceExit");
+                    return TextManager.Instance.GetLocalizedText("automapEntranceExit");
                 }
                 // if hit geometry is player position marker arrow
                 else if (nearestHit.Value.transform.name == NameGameobjectPlayerMarkerArrow)
                 {
-                    return TextManager.Instance.GetText(textDatabase, "automapPlayerMarker");
+                    return TextManager.Instance.GetLocalizedText("automapPlayerMarker");
                 }
                 // if hit geometry is teleporter portal marker and its parent gameobject is an teleporter entrance
                 else if (
@@ -598,7 +591,7 @@ namespace DaggerfallWorkshop.Game
                         nearestHit.Value.transform.parent.transform.name.EndsWith(NameGameobjectTeleporterEntranceSubStringEnd)
                         )
                 {
-                    return TextManager.Instance.GetText(textDatabase, "automapTeleporterEntrance");
+                    return TextManager.Instance.GetLocalizedText("automapTeleporterEntrance");
                 }
                 // if hit geometry is teleporter portal marker and its parent gameobject is an teleporter exit
                 else if (
@@ -607,7 +600,7 @@ namespace DaggerfallWorkshop.Game
                         nearestHit.Value.transform.parent.transform.name.EndsWith(NameGameobjectTeleporterExitSubStringEnd)
                         )
                 {
-                    return TextManager.Instance.GetText(textDatabase, "automapTeleporterExit");
+                    return TextManager.Instance.GetLocalizedText("automapTeleporterExit");
                 }
             }
             return ""; // otherwise return empty string (= no mouse hover over text will be displayed)
@@ -1359,7 +1352,7 @@ namespace DaggerfallWorkshop.Game
 
                             MeshRenderer meshRenderer = inner2Elem.gameObject.GetComponent<MeshRenderer>();
                             if (meshRenderer == null)
-                                break;
+                                continue;
 
                             // update materials and set meshes as visited in this run (so "Interior" geometry always is colored
                             // (since we don't disable the mesh, it is also discovered - which is a precondition for being rendered))
@@ -1388,7 +1381,7 @@ namespace DaggerfallWorkshop.Game
 
                                 MeshRenderer meshRenderer = inner3Elem.gameObject.GetComponent<MeshRenderer>();
                                 if (meshRenderer == null)
-                                    break;
+                                    continue;
 
                                 // update materials (omit 2nd parameter so default behavior is initiated which is:
                                 // meshes are marked as not visited in this run (so "Dungeon" geometry that has been discovered in a previous dungeon run is rendered in grayscale)
@@ -1850,9 +1843,30 @@ namespace DaggerfallWorkshop.Game
                 return;
             }
 
+            DFLocation location = currentLocation.Value;
+            int originX, originY, sizeX, sizeY;
+            {
+                const int sizeMin = 7;
+
+                int blockXMin = 1000;
+                int blockXMax = -1000;
+                int blockZMin = 1000;
+                int blockZMax = -1000;
+                foreach (DFLocation.DungeonBlock block in location.Dungeon.Blocks)
+                {
+                    if (block.X < blockXMin) blockXMin = block.X;
+                    if (block.X > blockXMax) blockXMax = block.X;
+                    if (block.Z < blockZMin) blockZMin = block.Z;
+                    if (block.Z > blockZMax) blockZMax = block.Z;
+                }
+                originX = -blockXMin + 1;
+                originY = -blockZMin + 1;
+                sizeX = sizeY = Math.Max(sizeMin, Math.Max(blockXMax + 1 + originX, blockZMax + 1 + originY));
+            }
+
             int microMapBlockSizeInPixels = 2;
-            int width = 7 * microMapBlockSizeInPixels;
-            int height = 7 * microMapBlockSizeInPixels;
+            int width = sizeX * microMapBlockSizeInPixels;
+            int height = sizeY * microMapBlockSizeInPixels;
             textureMicroMap = new Texture2D(width, height, TextureFormat.ARGB32, false);
             textureMicroMap.filterMode = FilterMode.Point;
 
@@ -1861,11 +1875,10 @@ namespace DaggerfallWorkshop.Game
                 colors[i] = new Color(0.0f, 0.0f, 0.0f, 0.0f);
             textureMicroMap.SetPixels(0, 0, width, height, colors);
 
-            DFLocation location = currentLocation.Value;
             foreach (DFLocation.DungeonBlock block in location.Dungeon.Blocks)
             {
-                int xBlockPos = 3 + block.X;
-                int yBlockPos = 3 + block.Z;
+                int xBlockPos = originX + block.X;
+                int yBlockPos = originY + block.Z;
                 for (int y = 0; y < microMapBlockSizeInPixels; y++)
                 {
                     for (int x = 0; x < microMapBlockSizeInPixels; x++)
@@ -1879,8 +1892,8 @@ namespace DaggerfallWorkshop.Game
             DaggerfallDungeon dungeon = GameManager.Instance.DungeonParent.GetComponentInChildren<DaggerfallDungeon>();
             float entrancePosX = dungeon.StartMarker.transform.position.x / RDBLayout.RDBSide;
             float entrancePosY = dungeon.StartMarker.transform.position.z / RDBLayout.RDBSide;
-            int xPosOfBlock = 3 * microMapBlockSizeInPixels + (int)(Mathf.Floor(entrancePosX*2)) * (microMapBlockSizeInPixels / 2);
-            int yPosOfBlock = 3 * microMapBlockSizeInPixels + (int)(Mathf.Floor(entrancePosY*2)) * (microMapBlockSizeInPixels / 2);
+            int xPosOfBlock = originX * microMapBlockSizeInPixels + (int)(Mathf.Floor(entrancePosX*2)) * (microMapBlockSizeInPixels / 2);
+            int yPosOfBlock = originY * microMapBlockSizeInPixels + (int)(Mathf.Floor(entrancePosY*2)) * (microMapBlockSizeInPixels / 2);
             for (int y = 0; y < microMapBlockSizeInPixels / 2; y++)
             {
                 for (int x = 0; x < microMapBlockSizeInPixels / 2; x++)
@@ -1892,8 +1905,8 @@ namespace DaggerfallWorkshop.Game
             // mark player position on micro map            
             float playerPosX = gameObjectPlayerAdvanced.transform.position.x / RDBLayout.RDBSide;
             float playerPosY = gameObjectPlayerAdvanced.transform.position.z / RDBLayout.RDBSide;
-            xPosOfBlock = 3 * microMapBlockSizeInPixels + (int)(Mathf.Floor(playerPosX * 2)) * (microMapBlockSizeInPixels / 2);
-            yPosOfBlock = 3 * microMapBlockSizeInPixels + (int)(Mathf.Floor(playerPosY * 2)) * (microMapBlockSizeInPixels / 2);
+            xPosOfBlock = originX * microMapBlockSizeInPixels + (int)(Mathf.Floor(playerPosX * 2)) * (microMapBlockSizeInPixels / 2);
+            yPosOfBlock = originY * microMapBlockSizeInPixels + (int)(Mathf.Floor(playerPosY * 2)) * (microMapBlockSizeInPixels / 2);
             for (int y = 0; y < microMapBlockSizeInPixels / 2; y++)
             {
                 for (int x = 0; x < microMapBlockSizeInPixels / 2; x++)
@@ -2007,10 +2020,11 @@ namespace DaggerfallWorkshop.Game
             {
                 if (elem.name.Contains("DaggerfallDungeon"))
                 {
+                    DFLocation.DungeonBlock[] blocks = GameManager.Instance.PlayerEnterExit.Dungeon.Summary.LocationData.Dungeon.Blocks;
                     GameObject gameobjectDungeon = new GameObject(newGeometryName);
 
                     // Create dungeon layout
-                    foreach (DFLocation.DungeonBlock block in location.Dungeon.Blocks)
+                    foreach (DFLocation.DungeonBlock block in blocks)
                     {
                         if (location.Name == "Orsinium")
                         {
@@ -2024,6 +2038,7 @@ namespace DaggerfallWorkshop.Game
                         gameobjectBlock.transform.position = new Vector3(block.X * RDBLayout.RDBSide, 0, block.Z * RDBLayout.RDBSide);
 
                         gameobjectBlock.transform.SetParent(gameobjectDungeon.transform);
+                        AddWater(gameobjectBlock, block.WaterLevel);
                     }
 
                     gameobjectDungeon.transform.SetParent(gameobjectGeometry.transform);
@@ -2050,6 +2065,27 @@ namespace DaggerfallWorkshop.Game
             InjectMeshAndMaterialProperties();
 
             //oldGeometryName = newGeometryName;
+        }
+
+        private void AddWater(GameObject parent, short nativeBlockWaterLevel)
+        {
+            // Exit if no water present
+            if (nativeBlockWaterLevel == 10000)
+                return;
+
+            float waterLevel = nativeBlockWaterLevel * -1 * MeshReader.GlobalScale;
+            MeshRenderer[] renderers = parent.GetComponentsInChildren<MeshRenderer>();
+
+            if (renderers != null)
+            {
+                MaterialPropertyBlock propertyBlock = new MaterialPropertyBlock();
+                foreach (MeshRenderer renderer in renderers)
+                {
+                    renderer.GetPropertyBlock(propertyBlock);
+                    propertyBlock.SetFloat("_WaterLevel", waterLevel);
+                    renderer.SetPropertyBlock(propertyBlock);
+                }
+            }
         }
 
         /// <summary>

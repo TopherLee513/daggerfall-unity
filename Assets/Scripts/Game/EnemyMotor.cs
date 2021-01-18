@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -27,11 +27,13 @@ namespace DaggerfallWorkshop.Game
     [RequireComponent(typeof(CharacterController))]
     public class EnemyMotor : MonoBehaviour
     {
+
         #region Member Variables
 
         public float OpenDoorDistance = 2f;         // Maximum distance to open door
         const float attackSpeedDivisor = 2f;        // How much to slow down during attack animations
         float stopDistance = 1.7f;                  // Used to prevent orbiting
+        const float doorCrouchingHeight = 1.65f;    // How low enemies dive to pass thru doors
         bool flies;                                 // The enemy can fly
         bool swims;                                 // The enemy can swim
         bool pausePursuit;                          // pause to wait for the player to come closer to ground
@@ -66,7 +68,9 @@ namespace DaggerfallWorkshop.Game
         int searchMult;
         int ignoreMaskForShooting;
         bool canAct;
+        bool falls;
         bool flyerFalls;
+        float lastGroundedY;                        // Used for fall damage
         float originalHeight;
 
         EnemySenses senses;
@@ -74,7 +78,9 @@ namespace DaggerfallWorkshop.Game
         Vector3 detourDestination;
         CharacterController controller;
         DaggerfallMobileUnit mobile;
+        Collider myCollider;
         DaggerfallEntityBehaviour entityBehaviour;
+        EnemyBlood entityBlood;
         EntityEffectManager entityEffectManager;
         EntityEffectBundle selectedSpell;
         EnemyAttack attack;
@@ -98,11 +104,12 @@ namespace DaggerfallWorkshop.Game
             senses = GetComponent<EnemySenses>();
             controller = GetComponent<CharacterController>();
             mobile = GetComponentInChildren<DaggerfallMobileUnit>();
+            myCollider = gameObject.GetComponent<Collider>();
             IsHostile = mobile.Summary.Enemy.Reactions == MobileReactions.Hostile;
-            flies = mobile.Summary.Enemy.Behaviour == MobileBehaviour.Flying ||
-                    mobile.Summary.Enemy.Behaviour == MobileBehaviour.Spectral;
+            flies = CanFly();
             swims = mobile.Summary.Enemy.Behaviour == MobileBehaviour.Aquatic;
             entityBehaviour = GetComponent<DaggerfallEntityBehaviour>();
+            entityBlood = GetComponent<EnemyBlood>();
             entityEffectManager = GetComponent<EntityEffectManager>();
             entity = entityBehaviour.Entity as EnemyEntity;
             attack = GetComponent<EnemyAttack>();
@@ -113,6 +120,8 @@ namespace DaggerfallWorkshop.Game
             // Add things AI should ignore when checking for a clear path to shoot.
             ignoreMaskForShooting = ~(1 << LayerMask.NameToLayer("SpellMissiles") | 1 << LayerMask.NameToLayer("Ignore Raycast"));
 
+            lastGroundedY = transform.position.y;
+
             // Get original height, before any height adjustments
             originalHeight = controller.height;
         }
@@ -122,8 +131,10 @@ namespace DaggerfallWorkshop.Game
             if (GameManager.Instance.DisableAI)
                 return;
 
+            flies = CanFly();
             canAct = true;
             flyerFalls = false;
+            falls = false;
 
             HandleParalysis();
             KnockbackMovement();
@@ -133,6 +144,7 @@ namespace DaggerfallWorkshop.Game
             UpdateTimers();
             if (canAct)
                 TakeAction();
+            ApplyFallDamage();
             UpdateToIdleOrMoveAnim();
             OpenDoors();
             HeightAdjust();
@@ -276,6 +288,7 @@ namespace DaggerfallWorkshop.Game
             if (!flies && !swims && !IsLevitating && !controller.isGrounded)
             {
                 controller.SimpleMove(Vector3.zero);
+                falls = true;
 
                 // Only cancel movement if actually falling. Sometimes mobiles can get stuck where they are !isGrounded but SimpleMove(Vector3.zero) doesn't help.
                 // Allowing them to continue and attempt a Move() frees them, but we don't want to allow that if we can avoid it so they aren't moving
@@ -285,7 +298,10 @@ namespace DaggerfallWorkshop.Game
             }
 
             if (flyerFalls && flies && !IsLevitating)
+            {
                 controller.SimpleMove(Vector3.zero);
+                falls = true;
+            }
         }
 
         /// <summary>
@@ -398,6 +414,10 @@ namespace DaggerfallWorkshop.Game
             else
                 distance = (destination - transform.position).magnitude;
 
+            // Do not change action if currently playing oneshot wants to stop actions
+            if (isPlayingOneShot && mobile.OneShotPauseActionsWhilePlaying())
+                return;
+
             // Ranged attacks
             if (DoRangedAttack(direction, moveSpeed, distance, isPlayingOneShot))
                 return;
@@ -501,7 +521,8 @@ namespace DaggerfallWorkshop.Game
         /// </summary>
         bool DoRangedAttack(Vector3 direction, float moveSpeed, float distance, bool isPlayingOneShot)
         {
-            if ((CanShootBow() || CanCastRangedSpell()) && senses.TargetInSight && senses.DetectedTarget && 360 * MeshReader.GlobalScale > senses.DistanceToTarget && senses.DistanceToTarget < 2048 * MeshReader.GlobalScale)
+            bool inRange = senses.DistanceToTarget > EnemyAttack.minRangedDistance && senses.DistanceToTarget < EnemyAttack.maxRangedDistance;
+            if (inRange && senses.TargetInSight && senses.DetectedTarget && (CanShootBow() || CanCastRangedSpell()))
             {
                 if (DaggerfallUnity.Settings.EnhancedCombatAI && senses.TargetIsWithinYawAngle(22.5f, destination) && strafeTimer <= 0)
                 {
@@ -520,7 +541,7 @@ namespace DaggerfallWorkshop.Game
                         if (hasBowAttack)
                         {
                             // Random chance to shoot bow
-                            if (DFRandom.rand() < 1000)
+                            if (Random.value < 1/32f)
                             {
                                 if (mobile.Summary.Enemy.HasRangedAttack1 && !mobile.Summary.Enemy.HasRangedAttack2)
                                     mobile.ChangeEnemyState(MobileStates.RangedAttack1);
@@ -529,7 +550,7 @@ namespace DaggerfallWorkshop.Game
                             }
                         }
                         // Random chance to shoot spell
-                        else if (DFRandom.rand() % 40 == 0 && entityEffectManager.SetReadySpell(selectedSpell))
+                        else if (Random.value < 1/40f && entityEffectManager.SetReadySpell(selectedSpell))
                         {
                             mobile.ChangeEnemyState(MobileStates.Spell);
                         }
@@ -630,6 +651,22 @@ namespace DaggerfallWorkshop.Game
             // Check that there is a clear path to shoot projectile
             Vector3 sphereCastDir = senses.PredictNextTargetPos(speed);
             if (sphereCastDir == EnemySenses.ResetPlayerPos)
+                return false;
+
+            // No point blank shooting special handling here, makes enemies favor other attack types (melee, touch spells,...)
+
+            bool myColliderWasEnabled = false;
+            if (myCollider)
+            {
+                myColliderWasEnabled = myCollider.enabled;
+                // Exclude enemy collider from CheckSphere test
+                myCollider.enabled = false;
+            }
+            bool isSpaceInsufficient = Physics.CheckSphere(transform.position, radius, ignoreMaskForShooting);
+            if (myCollider)
+                myCollider.enabled = myColliderWasEnabled;
+
+            if (isSpaceInsufficient)
                 return false;
 
             float sphereCastDist = (sphereCastDir - transform.position).magnitude;
@@ -744,6 +781,16 @@ namespace DaggerfallWorkshop.Game
                 return false;
 
             return true;
+        }
+
+        /// <summary>
+        /// Checks if enemy can fly based on behaviour.
+        /// This can change in the case of a transformed Seducer.
+        /// </summary>
+        /// <returns>True if enemy can fly.</returns>
+        bool CanFly()
+        {
+            return mobile.Summary.Enemy.Behaviour == MobileBehaviour.Flying || mobile.Summary.Enemy.Behaviour == MobileBehaviour.Spectral;
         }
 
         /// <summary>
@@ -1042,7 +1089,8 @@ namespace DaggerfallWorkshop.Game
         void ObstacleCheck(Vector3 direction)
         {
             obstacleDetected = false;
-            const int checkDistance = 1;
+            // Rationale: follow walls at 45° incidence; is that optimal? At least it seems very good
+            float checkDistance = controller.radius / Mathf.Sqrt(2f);
             foundUpwardSlope = false;
             foundDoor = false;
 
@@ -1050,10 +1098,11 @@ namespace DaggerfallWorkshop.Game
             // Climbable/not climbable step for the player seems to be at around a height of 0.65f. The player is 1.8f tall.
             // Using the same ratio to height as these values, set the capsule for the enemy. 
             Vector3 p1 = transform.position + (Vector3.up * -originalHeight * 0.1388F);
-            Vector3 p2 = p1 + (Vector3.up * originalHeight * 0.5f);
+            Vector3 p2 = p1 + (Vector3.up * Mathf.Min(originalHeight, doorCrouchingHeight) / 2);
 
             if (Physics.CapsuleCast(p1, p2, controller.radius / 2, direction, out hit, checkDistance))
             {
+                // Debug.DrawRay(transform.position, direction, Color.red, 2.0f);
                 obstacleDetected = true;
                 DaggerfallEntityBehaviour entityBehaviour2 = hit.transform.GetComponent<DaggerfallEntityBehaviour>();
                 DaggerfallActionDoor door = hit.transform.GetComponent<DaggerfallActionDoor>();
@@ -1094,6 +1143,10 @@ namespace DaggerfallWorkshop.Game
                         foundUpwardSlope = true;
                     }
                 }
+            }
+            else
+            {
+                // Debug.DrawRay(transform.position, direction, Color.green, 2.0f);
             }
         }
 
@@ -1277,6 +1330,39 @@ namespace DaggerfallWorkshop.Game
             lastPosition = transform.position;
         }
 
+        void ApplyFallDamage()
+        {
+            // Assuming the same formula is used for the player and enemies
+            const float fallingDamageThreshold = 5.0f;
+            const float HPPerMetre = 5f;
+
+            if (controller.isGrounded)
+            {
+                // did enemy just land?
+                if (falls)
+                {
+                    float fallDistance = lastGroundedY - transform.position.y;
+                    if (fallDistance > fallingDamageThreshold)
+                    {
+                        int damage = (int)(HPPerMetre * (fallDistance - fallingDamageThreshold));
+
+                        EnemyEntity enemyEntity = entityBehaviour.Entity as EnemyEntity;
+                        enemyEntity.DecreaseHealth(damage);
+
+                        if (entityBlood)
+                        {
+                            // Like in classic, falling enemies bleed at the center. It must hurt the center of mass ;)
+                            entityBlood.ShowBloodSplash(0, transform.position);
+                        }
+
+                        DaggerfallUI.Instance.DaggerfallAudioSource.PlayClipAtPoint((int)SoundClips.FallDamage, FindGroundPosition());
+                    }
+                }
+
+                lastGroundedY = transform.position.y;
+            }
+        }
+
         /// <summary>
         /// Open doors that are in the way.
         /// </summary>
@@ -1307,15 +1393,15 @@ namespace DaggerfallWorkshop.Game
         {
             // If enemy bumps into something, temporarily reduce their height to 1.65, which should be short enough to fit through most if not all doorways.
             // Unfortunately, while the enemy is shortened, projectiles will not collide with the top of the enemy for the difference in height.
-            if (!resetHeight && controller && ((controller.collisionFlags & CollisionFlags.CollidedSides) != 0) && originalHeight > 1.65f)
+            if (!resetHeight && controller && ((controller.collisionFlags & CollisionFlags.CollidedSides) != 0) && originalHeight > doorCrouchingHeight)
             {
                 // Adjust the center of the controller so that sprite doesn't sink into the ground
-                centerChange = (1.65f - controller.height) / 2;
+                centerChange = (doorCrouchingHeight - controller.height) / 2;
                 Vector3 newCenter = controller.center;
                 newCenter.y += centerChange;
                 controller.center = newCenter;
                 // Adjust the height
-                controller.height = 1.65f;
+                controller.height = doorCrouchingHeight;
                 resetHeight = true;
                 heightChangeTimer = 0.5f;
             }

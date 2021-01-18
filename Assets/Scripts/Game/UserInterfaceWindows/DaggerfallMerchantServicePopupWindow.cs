@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -27,20 +27,20 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         #region UI Controls
 
-        Panel mainPanel = new Panel();
-        Button talkButton = new Button();
-        Button serviceButton = new Button();
-        Button exitButton = new Button();
-        TextLabel serviceLabel = new TextLabel();
+        protected Panel mainPanel = new Panel();
+        protected Button talkButton = new Button();
+        protected Button serviceButton = new Button();
+        protected Button exitButton = new Button();
+        protected TextLabel serviceLabel = new TextLabel();
 
         #endregion
 
         #region Fields
 
         const string baseTextureName = "GNRC01I0.IMG";      // Talk / Sell
-        Texture2D baseTexture;
+        protected Texture2D baseTexture;
 
-        Services currentService;
+        protected Services currentService;
         StaticNPC merchantNPC;
 
         #endregion
@@ -109,19 +109,22 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         #region Private Methods
 
-        string GetServiceLabelText()
+        protected string GetServiceLabelText()
         {
+            if (Guilds.Services.HasCustomMerchantService(merchantNPC.Data.factionID))
+                return Guilds.Services.GetCustomMerchantServiceLabel(merchantNPC.Data.factionID);
+
             switch (currentService)
             {
                 default:
                 case Services.Sell:
-                    return HardStrings.serviceSell;
+                    return TextManager.Instance.GetLocalizedText("serviceSell");
                 case Services.Banking:
-                    return HardStrings.serviceBanking;
+                    return TextManager.Instance.GetLocalizedText("serviceBanking");
             }
         }
 
-        void LoadTextures()
+        protected virtual void LoadTextures()
         {
             baseTexture = ImageReader.GetTexture(baseTextureName);
         }
@@ -130,29 +133,40 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         #region Event Handlers
 
-        private void TalkButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
+        protected virtual void TalkButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             CloseWindow();
             GameManager.Instance.TalkManager.TalkToStaticNPC(merchantNPC);
         }
 
-        private void ServiceButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
+        protected virtual void ServiceButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             CloseWindow();
-            switch (currentService)
+
+            // Use a registered custom service method
+            Guilds.Services.CustomMerchantService customMerchantService;
+            if (Guilds.Services.GetCustomMerchantService(merchantNPC.Data.factionID, out customMerchantService))
+                customMerchantService(this);
+            else
             {
-                default:
-                case Services.Sell:
-                    uiManager.PushWindow(new DaggerfallTradeWindow(uiManager, DaggerfallTradeWindow.WindowModes.Sell, this));
-                    break;
-                case Services.Banking:
-                    uiManager.PushWindow(new DaggerfallBankingWindow(uiManager, this));
-                    break;
+                switch (currentService)
+                {
+                    default:
+                    case Services.Sell:
+                        uiManager.PushWindow(UIWindowFactory.GetInstanceWithArgs(UIWindowType.Trade, new object[] { uiManager, this, DaggerfallTradeWindow.WindowModes.Sell, null }));
+                        break;
+                    case Services.Banking:
+                        uiManager.PushWindow(UIWindowFactory.GetInstance(UIWindowType.Banking, uiManager, this));
+                        break;
+                }
             }
         }
 
-        private void ExitButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
+        protected virtual void ExitButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             CloseWindow();
         }
 

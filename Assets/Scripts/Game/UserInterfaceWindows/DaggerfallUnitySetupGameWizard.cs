@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -15,6 +15,7 @@ using System;
 using System.IO;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
 using DaggerfallConnect.Utility;
@@ -66,6 +67,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         Checkbox playerNudity;
         Checkbox clickToAttack;
         Checkbox sdfFontRendering;
+        Checkbox enableController;
         Checkbox retro320x200WorldRendering;
 
         Color unselectedTextColor = new Color(0.6f, 0.6f, 0.6f, 1f);
@@ -144,23 +146,42 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             exitButton.Outline.Enabled = true;
             exitButton.Label.Text = GetText("exit");
             exitButton.OnMouseClick += ExitButton_OnMouseClick;
+            exitButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GameSetupExit);
             NativePanel.Components.Add(exitButton);
 
             // If actually validated and we just want to see settings then move direct to settings page
-            if (DaggerfallUnity.Instance.IsPathValidated && DaggerfallUnity.Settings.ShowOptionsAtStart)
+            if (DaggerfallUnity.Instance.IsPathValidated && (DaggerfallUnity.Settings.ShowOptionsAtStart || Input.anyKey))
             {
                 currentStage = SetupStages.Options - 1;
             }
 
             moveNextStage = true;
 
+            int cursorWidth = 32;
+            int cursorHeight = 32;
+
+            // Apply joystick settings to input manager to keep consistency between the setup wizard and the game
+            InputManager.Instance.JoystickCursorSensitivity = DaggerfallUnity.Settings.JoystickCursorSensitivity;
+            InputManager.Instance.JoystickDeadzone = DaggerfallUnity.Settings.JoystickDeadzone;
+
             // Override cursor
             Texture2D tex;
             if (TextureReplacement.TryImportTexture("Cursor", true, out tex))
             {
-                Cursor.SetCursor(tex, Vector2.zero, CursorMode.Auto);
+                CursorMode cursorMode = CursorMode.Auto;
+                cursorWidth = tex.width;
+                cursorHeight = tex.height;
+
+                // Cases when true cursor size cannot be achieved using hardware accelerated cursor
+                if (SystemInfo.operatingSystemFamily == OperatingSystemFamily.Windows && (cursorWidth > 32 || cursorHeight > 32))
+                    cursorMode = CursorMode.ForceSoftware;
+
+                Cursor.SetCursor(tex, Vector2.zero, cursorMode);
                 Debug.Log("Cursor texture overridden by mods.");
             }
+
+            DaggerfallUnity.Settings.CursorWidth = cursorWidth;
+            DaggerfallUnity.Settings.CursorHeight = cursorHeight;
         }
 
         public override void Update()
@@ -177,6 +198,14 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // This is a special realtime setting as font rendering can change at any time, even during the setup process itself
             if (sdfFontRendering != null)
                 sdfFontRendering.IsChecked = DaggerfallUnity.Settings.SDFFontRendering;
+
+            // Sync controller enabling to current setting
+            // This is a special realtime setting as controller enabling can change at any time, even during the setup process itself
+            if (enableController != null)
+            {
+                enableController.IsChecked = DaggerfallUnity.Settings.EnableController;
+                InputManager.Instance.EnableController = DaggerfallUnity.Settings.EnableController;
+            }
 
             // Move to next setup stage
             if (moveNextStage)
@@ -435,6 +464,16 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             titleLabel.HorizontalAlignment = HorizontalAlignment.Center;
             optionsPanel.Components.Add(titleLabel);
 
+            // Add version text
+            TextLabel versionLabel = new TextLabel(DaggerfallUI.DefaultFont);
+            versionLabel.Text = string.Format("{0} v{1}", char.ToUpper(VersionInfo.DaggerfallUnityStatus[0]) + VersionInfo.DaggerfallUnityStatus.Substring(1), VersionInfo.DaggerfallUnityVersion);
+            versionLabel.Position = new Vector2(0, 40);
+            versionLabel.TextScale = 1.0f;
+            versionLabel.HorizontalAlignment = HorizontalAlignment.Center;
+            versionLabel.ShadowPosition = Vector2.zero;
+            versionLabel.TextColor = secondaryTextColor;
+            optionsPanel.Components.Add(versionLabel);
+
             // Add settings path text
             TextLabel settingsPathLabel = new TextLabel();
             settingsPathLabel.Text = DaggerfallUnity.Settings.PersistentDataPath;
@@ -466,6 +505,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             sdfFontRendering.OnToggleState += SDFFontRendering_OnToggleState;
             //bool exampleModCheckbox = AddOption(x, "Example", "Example built-in mod", DaggerfallUnity.Settings.ExampleModOption);
 
+            enableController = AddOption(x, "enableController", DaggerfallUnity.Settings.EnableController);
+            enableController.OnToggleState += EnableController_OnToggleState;
+
             // Add mod note
             TextLabel modNoteLabel = DaggerfallUI.AddTextLabel(DaggerfallUI.DefaultFont, new Vector2(0, 125), GetText("modNote"), optionsPanel);
             modNoteLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -480,6 +522,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             optionsConfirmButton.BackgroundColor = new Color(0.0f, 0.5f, 0.0f, 0.4f);
             optionsConfirmButton.HorizontalAlignment = HorizontalAlignment.Center;
             optionsConfirmButton.OnMouseClick += OptionsConfirmButton_OnMouseClick;
+            optionsConfirmButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GameSetupPlay);
             optionsPanel.Components.Add(optionsConfirmButton);
 
             // Restart button
@@ -494,6 +537,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             restartButton.VerticalAlignment = VerticalAlignment.Top;
             restartButton.HorizontalAlignment = HorizontalAlignment.Left;
             restartButton.OnMouseClick += RestartButton_OnMouseClick;
+            restartButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GameSetupRestart);
             optionsPanel.Components.Add(restartButton);
 
             if (DaggerfallUnity.Settings.LypyL_ModSystem)
@@ -507,6 +551,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 ShowModsButton.Outline.Enabled = true;
                 optionsPanel.Components.Add(ShowModsButton);
                 ShowModsButton.OnMouseClick += ModsButton_OnOnMouseBlick;
+                ShowModsButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GameSetupMods);
             }
 
             // Advanced Settings
@@ -519,6 +564,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             AdvancedSettingsButton.Outline.Enabled = true;
             optionsPanel.Components.Add(AdvancedSettingsButton);
             AdvancedSettingsButton.OnMouseClick += AdvancedSettingsButton_OnOnMouseBlick;
+            AdvancedSettingsButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.GameSetupAdvancedSettings);
 
         }
 
@@ -526,6 +572,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             // Immediately switch font rendering
             DaggerfallUnity.Settings.SDFFontRendering = sdfFontRendering.IsChecked;
+        }
+
+        private void EnableController_OnToggleState()
+        {
+            // Immediately toggle controller
+            DaggerfallUnity.Settings.EnableController = enableController.IsChecked;
         }
 
         //void ShowSummaryPanel()
@@ -719,6 +771,24 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void OptionsConfirmButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            if (DaggerfallUnity.Settings.ShowOptionsAtStart && !alwayShowOptions.IsChecked)
+            {
+                var messageBox = new DaggerfallMessageBox(uiManager, this, true);
+                messageBox.SetText(GetText("showOptionsAgain"));
+                messageBox.AllowCancel = true;
+                messageBox.ClickAnywhereToClose = true;
+                messageBox.OnClose += () => {
+                    SaveOptionsAndContinue();
+                };
+                uiManager.PushWindow(messageBox);
+                return;
+            }
+
+            SaveOptionsAndContinue();
+        }
+
+        private void SaveOptionsAndContinue()
+        {
             DaggerfallUnity.Settings.ShowOptionsAtStart = alwayShowOptions.IsChecked;
             DaggerfallUnity.Settings.VSync = vsync.IsChecked;
             DaggerfallUnity.Settings.SwapHealthAndFatigueColors = swapHealthAndFatigue.IsChecked;
@@ -727,8 +797,35 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             DaggerfallUnity.Settings.Handedness = GetHandedness(leftHandWeapons.IsChecked);
             DaggerfallUnity.Settings.PlayerNudity = playerNudity.IsChecked;
             DaggerfallUnity.Settings.ClickToAttack = clickToAttack.IsChecked;
-
+            DaggerfallUnity.Settings.EnableController = enableController.IsChecked;
             DaggerfallUnity.Settings.SaveSettings();
+
+            if (ModManager.Instance)
+            {
+                foreach (Mod mod in ModManager.Instance.Mods.Where(x => x.Enabled))
+                {
+                    bool? isGameVersionSatisfied = mod.IsGameVersionSatisfied();
+                    if (isGameVersionSatisfied == false)
+                    {
+                        var messageBox = new DaggerfallMessageBox(uiManager, this, true);
+                        messageBox.SetText(GetText("incompatibleMods"));
+                        messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.Yes);
+                        messageBox.AddButton(DaggerfallMessageBox.MessageBoxButtons.No, true);
+                        messageBox.OnButtonClick += (_, messageBoxButton) =>
+                        {
+                            moveNextStage = messageBoxButton == DaggerfallMessageBox.MessageBoxButtons.Yes;
+                            messageBox.CloseWindow();
+                        };
+                        uiManager.PushWindow(messageBox);
+                        return;
+                    }
+                    else if (isGameVersionSatisfied == null)
+                    {
+                        Debug.LogWarningFormat("Unknown format for property \"DFUnity_Version\" of mod {0}. Please use x.y.z version of minimum compatible game build.", mod.Title);
+                    }
+                }
+            }
+
             moveNextStage = true;
         }
 

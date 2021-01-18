@@ -3,6 +3,9 @@ using System;
 using System.Collections;
 using DaggerfallConnect;
 using DaggerfallWorkshop.Game.Utility;
+using DaggerfallWorkshop.Game.Formulas;
+using DaggerfallWorkshop.Game.Serialization;
+using FullSerializer;
 
 namespace DaggerfallWorkshop.Game
 {
@@ -25,12 +28,14 @@ namespace DaggerfallWorkshop.Game
         private bool releasedFromCeiling = false;
         private bool overrideSkillCheck = false;
         private bool isClimbing = false;
+        private bool wasClimbing = false;
         private bool isSlipping = false;
         private bool atOutsideCorner = false;
         private bool atInsideCorner = false;
         private float climbingStartTimer = 0;
         private float climbingContinueTimer = 0;
         private bool showClimbingModeMessage = true;
+        private bool touchingSidesRestoreForce = false;
         #region Rays/Vectors
         private Vector2 lastHorizontalPosition = Vector2.zero;
         /// <summary>
@@ -70,15 +75,24 @@ namespace DaggerfallWorkshop.Game
         private readonly float regainHoldSkillCheckFrequency = 5; 
         // minimum percent chance to regain hold per skill check if slipping, gets closer to 100 with higher skill
         private const int regainHoldMinChance = 20;
+        // minimum percent chance to start climbing
+        private const int startClimbMinChance = 70;
         // minimum percent chance to continue climbing per skill check, gets closer to 100 with higher skill
-        private const int continueClimbMinChance = 70;
-        private const int graspWallMinChance = 50;
+        private const int continueClimbMinChance = 50;
+        // minimum percent chance to grab a wall while falling
+        private const int graspWallMinChance = 40;
 
         public bool IsClimbing
         {
             get { return isClimbing; }
             set { isClimbing = value; }
         }
+
+        public bool WasClimbing
+        {
+            get { return wasClimbing; }
+        }
+
         /// <summary>
         /// true if player is climbing but trying to regain hold of wall
         /// </summary>
@@ -161,12 +175,42 @@ namespace DaggerfallWorkshop.Game
             //bool forwardStationaryNearCeiling = inputForward && hangingMotor.IsWithinHangingDistance && horizontallyStationary;
             bool pushingFaceAgainstWallNearCeiling = false;//hangingMotor.IsHanging && !isClimbing && touchingSides && forwardStationaryNearCeiling;
             bool climbingOrForwardOrGrasping = (isClimbing || inputForward || airborneGraspWall);
-            RaycastHit hit;
             bool hangTouchNonVertical = false;//hangingMotor.IsHanging && touchingSides && Physics.Raycast(controller.transform.position, controller.transform.forward, out hit, 0.40f) && Mathf.Abs(hit.normal.y) > 0.06f;
 
             ClimbQuitMoveUnderToHang = (inputBack && !moveScanner.HitSomethingInFront && moveScanner.FrontUnderCeiling != null);
 
+            // Allow climbing slight overhangs when capsule hits above but upwards test rays have clear space overhead
+            // Works by gently bumping player capsule away from wall at point of contact so they can acquire new vertical climb position
+            // Provided angle not too extreme then player will keep climbing upwards or downwards
+            // Allows player to climb up gently angled positions like the coffin tunnel in Scourg Barrow and up over shallow eaves
+            if (isClimbing && (playerMotor.CollisionFlags & CollisionFlags.Above) == CollisionFlags.Above)
+            {
+                Vector3 frontTestPosition = controller.transform.position + wallDirection * controller.radius * 0.9f;
+                Vector3 backTestPosition = controller.transform.position - wallDirection * controller.radius * 0.1f;
+
+                //Debug.DrawLine(frontTestPosition, frontTestPosition + Vector3.up * 2, Color.red);
+                //Debug.DrawLine(backTestPosition, backTestPosition + Vector3.up * 2, Color.red);
+
+                // Test close to front of head for backward sloping wall like Scourg Barrow and bump a little backwards
+                // Then slightly further back for short overhangs like eaves and bump more backwards and a little upwards
+                // Height of raycast test is extended to help ensure there is clear space above not just an angled ceiling
+                if (!Physics.Raycast(frontTestPosition, Vector3.up, controller.height / 2 + 0.3f))
+                    controller.transform.position += -wallDirection * 0.1f;
+                else if (!Physics.Raycast(backTestPosition, Vector3.up, controller.height / 2 + 0.5f))
+                    controller.transform.position += -wallDirection * 0.4f + Vector3.up * 0.3f;
+            }
+
+            // Handle recently restoring from save game where climbing active
+            if (isClimbing && touchingSidesRestoreForce && !touchingSides)
+            {
+                touchingSides = true;
+                //Debug.Log("Forced touchingSides...");
+            }
+            else
+                touchingSidesRestoreForce = false;
+
             // Should we reset climbing starter timers?
+            wasClimbing = isClimbing;
             if ((!pushingFaceAgainstWallNearCeiling)
                 &&
                 (inputAbortCondition
@@ -198,7 +242,7 @@ namespace DaggerfallWorkshop.Game
                     climbingStartTimer += Time.deltaTime;
                 // Begin Climbing
                 else if (!isClimbing)
-                {   
+                {
                     //if (hangingMotor.IsHanging)
                     //{   // grab wall from ceiling
                     //    overrideSkillCheck = true;
@@ -206,9 +250,10 @@ namespace DaggerfallWorkshop.Game
                     //}
 
                     // automatic success if not falling
-                    if ((!airborneGraspWall /*&& !hangingMotor.IsHanging*/) || releasedFromCeiling)
-                        StartClimbing();
-                    // skill check to see if we catch the wall 
+                    if ((!airborneGraspWall /*&& !hangingMotor.IsHanging*/) || releasedFromCeiling) {
+                        if (ClimbingSkillCheck(startClimbMinChance))
+                            StartClimbing();
+                    } // skill check to see if we catch the wall 
                     else if (ClimbingSkillCheck(graspWallMinChance))
                         StartClimbing();
                     else
@@ -377,7 +422,7 @@ namespace DaggerfallWorkshop.Game
                 // Show climbing message then disable further showing of climbing mode message until current climb attempt is stopped
                 if (showClimbingModeMessage)
                 {
-                    DaggerfallUI.AddHUDText(UserInterfaceWindows.HardStrings.climbingMode);
+                    DaggerfallUI.AddHUDText(TextManager.Instance.GetLocalizedText("climbingMode"));
                     showClimbingModeMessage = false;
                 }
 
@@ -444,7 +489,7 @@ namespace DaggerfallWorkshop.Game
 
             if (!isSlipping)
             {
-                float climbScalar = speedChanger.GetClimbingSpeed();
+                float climbScalar = speedChanger.GetClimbingSpeed(playerMotor.Speed);
                 moveDirection = Vector3.zero;
                 bool movedForward = InputManager.Instance.HasAction(InputManager.Actions.MoveForwards);
                 bool movedBackward = InputManager.Instance.HasAction(InputManager.Actions.MoveBackwards);
@@ -607,23 +652,9 @@ namespace DaggerfallWorkshop.Game
             if (overrideSkillCheck)
                 return true;
 
-            int skill = player.Skills.GetLiveSkillValue(DFCareer.Skills.Climbing);
-            int luck = player.Stats.GetLiveStatValue(DFCareer.Stats.Luck);
-            if (player.Race == Entity.Races.Khajiit)
-                skill += 30;
+            int percentSuccess = FormulaHelper.CalculateClimbingChance(player, basePercentSuccess);
 
-            // Climbing effect states "target can climb twice as well" - doubling effective skill after racial applied
-            if (player.IsEnhancedClimbing)
-                skill *= 2;
-
-            // Clamp skill range
-            skill = Mathf.Clamp(skill, 5, 95);
-            float luckFactor = Mathf.Lerp(0, 10, luck * 0.01f);
-
-            // Skill Check
-            float percentSuccess = Mathf.Lerp(basePercentSuccess, 100, skill * .01f) + luckFactor;
-
-            if (Dice100.FailedRoll((int)percentSuccess))
+            if (Dice100.FailedRoll(percentSuccess))
             {
                 // Don't allow skill check to break climbing while swimming
                 // Water makes it easier to climb
@@ -635,6 +666,62 @@ namespace DaggerfallWorkshop.Game
             }
             return true;
         }
+        #endregion
+
+        #region Serialization
+
+        public AdvancedClimbingData_v1 GetSaveData()
+        {
+            AdvancedClimbingData_v1 data = new AdvancedClimbingData_v1();
+            if (DaggerfallUnity.Settings.AdvancedClimbing && isClimbing)
+            {
+                data.isClimbing = isClimbing;
+                data.climbingStartTimer = climbingStartTimer;
+                data.climbingContinueTimer = climbingContinueTimer;
+                data.wallDirection = wallDirection;
+                data.myLedgeDirection = myLedgeDirection;
+            }
+            return data;
+        }
+
+        public void RestoreSaveData(AdvancedClimbingData_v1 data)
+        {
+            if (DaggerfallUnity.Settings.AdvancedClimbing && data.isClimbing)
+            {
+                isClimbing = data.isClimbing;
+                climbingStartTimer = data.climbingStartTimer;
+                climbingContinueTimer = data.climbingContinueTimer;
+                wallDirection = data.wallDirection;
+                myLedgeDirection = data.myLedgeDirection;
+
+                // Clear some state on restore or a recent climb in same session might trigger improper movement
+                ClearStateOnRestore();
+
+                // Show climbing mode message and force enable touching sides until physics reacquires wall contact
+                // Also freeze motor so player doesn't start falling right away
+                showClimbingModeMessage = true;
+                touchingSidesRestoreForce = true;
+                GameManager.Instance.PlayerMotor.FreezeMotor = 1f;
+            }
+        }
+
+        void ClearStateOnRestore()
+        {
+            releasedFromCeiling = false;
+            overrideSkillCheck = false;
+            isSlipping = false;
+            atOutsideCorner = false;
+            atInsideCorner = false;
+            lastHorizontalPosition = Vector2.zero;
+            adjacentLedgeDirection = Vector3.zero;
+            moveDirection = Vector3.zero;
+            myStrafeRay = new Ray();
+            adjacentWallRay = new Ray();
+            cornerNormalRay = new Ray();
+            rappelMotor.ResetRappelState();
+            moveScanner.ResetAdjacentSurfaces();
+        }
+
         #endregion
     }
 }

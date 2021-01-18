@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -10,7 +10,6 @@ using DaggerfallConnect.Utility;
 using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game.UserInterface;
 using DaggerfallWorkshop.Game.Items;
-using DaggerfallWorkshop.Game.Banking;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 {
@@ -57,6 +56,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         Vector2 baseSize;
 
         KeyCode toggleClosedBinding;
+        bool isCloseWindowDeferred = false;
 
         #endregion
 
@@ -79,7 +79,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             ItemCollection inventory = GameManager.Instance.PlayerEntity.Items;
             bool hasHorse = GameManager.Instance.TransportManager.HasHorse();
             bool hasCart = GameManager.Instance.TransportManager.HasCart();
-            bool hasShip = GameManager.Instance.TransportManager.HasShip();
+            bool hasShip = GameManager.Instance.TransportManager.ShipAvailiable();
 
             // Load all textures
             LoadTextures();
@@ -95,32 +95,45 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // Foot button
             footButton = DaggerfallUI.AddButton(footButtonRect, mainPanel);
             footButton.OnMouseClick += FootButton_OnMouseClick;
+            footButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.TransportFoot);
+            footButton.OnKeyboardEvent += FootButton_OnKeyboardEvent;
 
             // Horse button
             horseButton = DaggerfallUI.AddButton(horseButtonRect, mainPanel);
             if (hasHorse) {
                 horseButton.OnMouseClick += HorseButton_OnMouseClick;
-            } else {
+                horseButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.TransportHorse);
+                horseButton.OnKeyboardEvent += HorseButton_OnKeyboardEvent;
+            }
+            else {
                 horseButton.BackgroundTexture = ImageReader.GetSubTexture(disabledTexture, horseDisabledRect, disabledTextureSize);
             }
             // Cart button
             cartButton = DaggerfallUI.AddButton(cartButtonRect, mainPanel);
             if (hasCart) {
                 cartButton.OnMouseClick += CartButton_OnMouseClick;
-            } else {
+                cartButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.TransportCart);
+                cartButton.OnKeyboardEvent += CartButton_OnKeyboardEvent;
+            }
+            else {
                 cartButton.BackgroundTexture = ImageReader.GetSubTexture(disabledTexture, cartDisabledRect, disabledTextureSize);
             }
             // Ship button
             shipButton = DaggerfallUI.AddButton(shipButtonRect, mainPanel);
             if (hasShip) {
                 shipButton.OnMouseClick += ShipButton_OnMouseClick;
-            } else {
+                shipButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.TransportShip);
+                shipButton.OnKeyboardEvent += ShipButton_OnKeyboardEvent;
+            }
+            else {
                 shipButton.BackgroundTexture = ImageReader.GetSubTexture(disabledTexture, shipDisabledRect, disabledTextureSize);
             }
 
             // Exit button
             exitButton = DaggerfallUI.AddButton(exitButtonRect, mainPanel);
             exitButton.OnMouseClick += ExitButton_OnMouseClick;
+            exitButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.TransportExit);
+            exitButton.OnKeyboardEvent += ExitButton_OnKeyboardEvent;
 
             NativePanel.Components.Add(mainPanel);
 
@@ -136,9 +149,12 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             base.Update();
 
-            // Toggle window closed with same hotkey used to open it
-            if (Input.GetKeyUp(toggleClosedBinding))
-                CloseWindow();
+            if (!DaggerfallUI.Instance.HotkeySequenceProcessed)
+            {
+                // Toggle window closed with same hotkey used to open it
+                if (InputManager.Instance.GetKeyUp(toggleClosedBinding))
+                    CloseWindow();
+            }
         }
 
         #endregion
@@ -162,11 +178,35 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             CloseWindow();
         }
 
+        protected void ExitButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+            {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+                isCloseWindowDeferred = true;
+            }
+            else if (keyboardEvent.type == EventType.KeyUp && isCloseWindowDeferred)
+            {
+                isCloseWindowDeferred = false;
+                CloseWindow();
+            }
+        }
+
         private void FootButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
             // Reset to normal on foot walking.
             GameManager.Instance.TransportManager.TransportMode = TransportModes.Foot;
             CloseWindow();
+        }
+
+        private void FootButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyUp)
+            {
+                // Reset to normal on foot walking.
+                GameManager.Instance.TransportManager.TransportMode = TransportModes.Foot;
+                CloseWindow();
+            }
         }
 
         private void HorseButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
@@ -176,16 +216,46 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             CloseWindow();
         }
 
+        private void HorseButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyUp)
+            {
+                // Change to riding a horse.
+                GameManager.Instance.TransportManager.TransportMode = TransportModes.Horse;
+                CloseWindow();
+            }
+        }
+
         private void CartButton_OnMouseClick(BaseScreenComponent sender, Vector2 position) {
             // Change to riding a cart.
             GameManager.Instance.TransportManager.TransportMode = TransportModes.Cart;
             CloseWindow();
         }
 
+        private void CartButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyUp)
+            {
+                // Change to riding a cart.
+                GameManager.Instance.TransportManager.TransportMode = TransportModes.Cart;
+                CloseWindow();
+            }
+        }
+
         private void ShipButton_OnMouseClick(BaseScreenComponent sender, Vector2 position) {
             // Teleport to your ship, or back.
             GameManager.Instance.TransportManager.TransportMode = TransportModes.Ship;
             CloseWindow();
+        }
+
+        private void ShipButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyUp)
+            {
+                // Teleport to your ship, or back.
+                GameManager.Instance.TransportManager.TransportMode = TransportModes.Ship;
+                CloseWindow();
+            }
         }
 
         #endregion

@@ -1,10 +1,10 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
 // Original Author: Gavin Clayton (interkarma@dfworkshop.net)
-// Contributors:    Hazelnut
+// Contributors:    Hazelnut, Numidium
 // 
 // Notes:
 //
@@ -17,7 +17,6 @@ using DaggerfallWorkshop.Game.Formulas;
 using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallConnect;
 using DaggerfallWorkshop.Game.Banking;
-using DaggerfallWorkshop.Game.Utility;
 
 namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 {
@@ -36,58 +35,72 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         #region UI Controls
 
-        Button whileButton;
-        Button healedButton;
-        Button loiterButton;
-        Button stopButton;
+        protected Button whileButton;
+        protected Button healedButton;
+        protected Button loiterButton;
+        protected Button stopButton;
 
-        Panel mainPanel = new Panel();
-        Panel counterPanel = new Panel();
+        protected Panel mainPanel = new Panel();
+        protected Panel counterPanel = new Panel();
 
-        TextLabel counterLabel = new TextLabel();
+        protected TextLabel counterLabel = new TextLabel();
 
         #endregion
 
         #region UI Textures
 
-        Texture2D baseTexture;
-        Texture2D hoursPastTexture;
-        Texture2D hoursRemainingTexture;
+        protected Texture2D baseTexture;
+        protected Texture2D hoursPastTexture;
+        protected Texture2D hoursRemainingTexture;
 
         #endregion
 
         #region Fields
 
-        const string baseTextureName = "REST00I0.IMG";              // Rest type
-        const string hoursPastTextureName = "REST01I0.IMG";         // "Hours past"
-        const string hoursRemainingTextureName = "REST02I0.IMG";    // "Hours remaining"
+        const int sleepEventMinimumHours = 6;
 
-        const int minutesPerTick = 10;
-        const float restWaitTimePerHour = 0.75f;
-        const float loiterWaitTimePerHour = 1.25f;
-        const int cityCampingIllegal = 17;
+        protected const string baseTextureName = "REST00I0.IMG";              // Rest type
+        protected const string hoursPastTextureName = "REST01I0.IMG";         // "Hours past"
+        protected const string hoursRemainingTextureName = "REST02I0.IMG";    // "Hours remaining"
 
-        RestModes currentRestMode = RestModes.Selection;
-        int minutesOfHour = 0;
-        int hoursRemaining = 0;
-        int totalHours = 0;
-        float waitTimer = 0;
-        bool enemyBrokeRest = false;
-        int remainingHoursRented = -1;
-        Vector3 allocatedBed;
-        bool ignoreAllocatedBed = false;
-        bool abortRestForEnemySpawn = false;
+        protected const int minutesPerTick = 10;
+        protected const float restWaitTimePerHour = 0.75f;
+        protected const float loiterWaitTimePerHour = 1.25f;
+        protected const int cityCampingIllegal = 17;
 
-        PlayerEntity playerEntity;
-        DaggerfallHUD hud;
+        protected int minutesOfHour = 0;
+        protected int hoursRemaining = 0;
+        protected int totalHours = 0;
+        protected float waitTimer = 0;
+        protected bool enemyBrokeRest = false;
+        protected string preventedRestMessage = null;
+        protected int remainingHoursRented = -1;
+        protected Vector3 allocatedBed;
+        protected bool ignoreAllocatedBed = false;
+        protected bool abortRestForEnemySpawn = false;
+        bool isCloseWindowDeferred = false;
+        protected bool endedRest = false;
 
-        KeyCode toggleClosedBinding;
+        protected PlayerEntity playerEntity;
+        protected DaggerfallHUD hud;
+
+        protected KeyCode toggleClosedBinding;
+
+        #endregion
+
+        #region Properties
+
+        protected RestModes currentRestMode
+        {
+            get { return GameManager.Instance.PlayerEntity.CurrentRestMode; }
+            set { GameManager.Instance.PlayerEntity.CurrentRestMode = value; }
+        }
 
         #endregion
 
         #region Enums
 
-        enum RestModes
+        public enum RestModes
         {
             Selection,
             TimedRest,
@@ -111,6 +124,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         protected override void Setup()
         {
+            // Disable default canceling behavior so exiting can be handled by the Update function instead
+            AllowCancel = false;
+
             // Load all the textures used by rest interface
             LoadTextures();
 
@@ -128,10 +144,13 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // Create buttons
             whileButton = DaggerfallUI.AddButton(whileButtonRect, mainPanel);
             whileButton.OnMouseClick += WhileButton_OnMouseClick;
+            whileButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.RestForAWhile);
             healedButton = DaggerfallUI.AddButton(healedButtonRect, mainPanel);
             healedButton.OnMouseClick += HealedButton_OnMouseClick;
+            healedButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.RestUntilHealed);
             loiterButton = DaggerfallUI.AddButton(loiterButtonRect, mainPanel);
             loiterButton.OnMouseClick += LoiterButton_OnMouseClick;
+            loiterButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.RestLoiter);
 
             // Setup counter panel
             counterPanel.Position = new Vector2(counterPanelRect.x, counterPanelRect.y);
@@ -149,6 +168,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             // Stop button
             stopButton = DaggerfallUI.AddButton(stopButtonRect, counterPanel);
             stopButton.OnMouseClick += StopButton_OnMouseClick;
+            stopButton.Hotkey = DaggerfallShortcut.GetBinding(DaggerfallShortcut.Buttons.RestStop);
+            stopButton.OnKeyboardEvent += StopButton_OnKeyboardEvent;
+
 
             // Store toggle closed binding for this window
             toggleClosedBinding = InputManager.Instance.GetBinding(InputManager.Actions.Rest);
@@ -162,9 +184,16 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             base.Update();
 
-            // Toggle window closed with same hotkey used to open it
-            if (Input.GetKeyUp(toggleClosedBinding))
-                CloseWindow();
+            if (!DaggerfallUI.Instance.HotkeySequenceProcessed)
+            {
+                // Toggle window closed with same hotkey used to open it, or the DaggerfallBaseWindow's exitKey
+                // Window will properly end the rest if the player was currently resting
+                if (InputManager.Instance.GetKeyUp(toggleClosedBinding) || Input.GetKeyUp(exitKey))
+                    if (currentRestMode != RestModes.Selection)
+                        EndRest();
+                    else
+                        CloseWindow();
+            }
 
             // Update HUD
             if (hud != null)
@@ -176,7 +205,11 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             if (currentRestMode == RestModes.FullRest || currentRestMode == RestModes.TimedRest)
                 RaiseOnSleepTickEvent();
 
-            ShowStatus();
+            // Prevent updating the view when the EndRest MessageBox appears, that way the window
+            // won't update back to the selection screen when resting is cut prematurely
+            if (!endedRest)
+                ShowStatus();
+
             if (currentRestMode != RestModes.Selection)
             {
                 if ((currentRestMode == RestModes.FullRest) && IsPlayerFullyHealed())
@@ -192,16 +225,20 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             base.Draw();
 
-            // Draw vitals
-            if (hud != null)
-            {
+            // Draw standard vitals if enabled
+            if (hud != null && hud.HUDVitals.Enabled)
                 hud.HUDVitals.Draw();
-            }
+
+            // Draw large HUD if enabled
+            if (hud != null && hud.LargeHUD.Enabled)
+                hud.LargeHUD.Draw();
         }
 
         public override void OnPush()
         {
             base.OnPush();
+
+            toggleClosedBinding = InputManager.Instance.GetBinding(InputManager.Actions.Rest);
 
             // Reset counters
             minutesOfHour = 0;
@@ -209,6 +246,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             totalHours = 0;
             waitTimer = 0;
             enemyBrokeRest = false;
+            preventedRestMessage = null;
             abortRestForEnemySpawn = false;
 
             // Get references
@@ -217,6 +255,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
             GameManager.OnEncounter += GameManager_OnEncounter;
 
+            // Raise player resting flag when UI opens
+            // This is used for random enemy spawning and influences CastWhenHeld durability loss
+            playerEntity.IsResting = true;
         }
 
         public override void OnPop()
@@ -231,7 +272,15 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 interior.UpdateNpcPresence();
             }
 
-            Debug.Log(string.Format("Resting raised time by {0} hours total", totalHours));
+            // Lower player resting flag when UI closes
+            playerEntity.IsResting = false;
+            playerEntity.IsLoitering = false;
+
+            // Raise sleep ended event when popping UI and player has rested more than 6 hours
+            if (totalHours > sleepEventMinimumHours)
+                RaiseOnSleepEndEvent();
+
+            //Debug.Log(string.Format("Resting raised time by {0} hours total", totalHours));
         }
 
         #endregion
@@ -297,13 +346,15 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 return true;
             }
 
+            preventedRestMessage = GameManager.Instance.GetPreventedRestMessage();
+
+            if (preventedRestMessage != null)
+                return true;
+
             // Do nothing if another window has taken over UI
             // This will stop rest from progressing further until player dismisses top window
             if (uiManager.TopWindow != this)
                 return false;
-
-            // Set flag in playerEntity used for random enemy spawning
-            playerEntity.IsResting = true;
 
             // Loitering runs at a slower rate to rest
             float waitTimePerHour = (currentRestMode == RestModes.Loiter) ? loiterWaitTimePerHour : restWaitTimePerHour;
@@ -341,11 +392,16 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 return false;
 
             // Check if enemies nearby
-            if (GameManager.Instance.AreEnemiesNearby())
+            if (GameManager.Instance.AreEnemiesNearby(true))
             {
                 enemyBrokeRest = true;
                 return true;
             }
+
+            preventedRestMessage = GameManager.Instance.GetPreventedRestMessage();
+
+            if (preventedRestMessage != null)
+                return true;
 
             // Tick vitals to end
             if (currentRestMode == RestModes.TimedRest)
@@ -376,12 +432,11 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private bool CheckRent()
         {
-            if (remainingHoursRented > -1)
-            {
-                remainingHoursRented--;
-                return (remainingHoursRented == 0);
-            }
-            return false;
+            if (remainingHoursRented == -1)
+                return false;
+
+            remainingHoursRented--;
+            return (remainingHoursRented == 0);
         }
 
         void EndRest()
@@ -391,16 +446,32 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             const int youAreHealedTextId = 350;
             const int finishedLoiteringTextId = 349;
 
+            endedRest = true;
+
             if (enemyBrokeRest)
             {
                 DaggerfallMessageBox mb = DaggerfallUI.MessageBox(enemiesNearby);
                 mb.OnClose += RestFinishedPopup_OnClose;
             }
+            else if (preventedRestMessage != null)
+            {
+                if (preventedRestMessage != "")
+                {
+                    DaggerfallMessageBox mb = DaggerfallUI.MessageBox(preventedRestMessage);
+                    mb.OnClose += RestFinishedPopup_OnClose;
+                }
+                else
+                {
+                    const int cannotRestNow = 355;
+                    DaggerfallMessageBox mb = DaggerfallUI.MessageBox(cannotRestNow);
+                    mb.OnClose += RestFinishedPopup_OnClose;
+                }
+            }
             else
             {
                 if (remainingHoursRented == 0)
                 {
-                    DaggerfallMessageBox mb = DaggerfallUI.MessageBox(HardStrings.expiredRentedRoom);
+                    DaggerfallMessageBox mb = DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("expiredRentedRoom"));
                     mb.OnClose += RestFinishedPopup_OnClose;
                     currentRestMode = RestModes.Selection;
                     playerEntity.RemoveExpiredRentedRooms();
@@ -413,7 +484,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                 }
                 else if (currentRestMode == RestModes.FullRest)
                 {
-                    DaggerfallMessageBox mb = DaggerfallUI.MessageBox(youAreHealedTextId);
+                    int message = IsPlayerFullyHealed() ? youAreHealedTextId : youWakeUpTextId;
+                    DaggerfallMessageBox mb =  DaggerfallUI.MessageBox(message);
                     mb.OnClose += RestFinishedPopup_OnClose;
                     currentRestMode = RestModes.Selection;
                 }
@@ -512,7 +584,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
                     return true;
                 }
                 CloseWindow();
-                DaggerfallUI.MessageBox(HardStrings.haveNotRentedRoom);
+                DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("haveNotRentedRoom"));
                 return false;
             }
             return true;
@@ -533,7 +605,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             if (CanRest(alreadyWarned))
             {
                 DaggerfallInputMessageBox mb = new DaggerfallInputMessageBox(uiManager, this);
-                mb.SetTextBoxLabel(HardStrings.restHowManyHours);
+                mb.SetTextBoxLabel(TextManager.Instance.GetLocalizedText("restHowManyHours"));
                 mb.TextPanelDistanceX = 9;
                 mb.TextPanelDistanceY = 8;
                 mb.TextBox.Text = "0";
@@ -561,9 +633,11 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void WhileButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             if (DaggerfallUnity.Settings.IllegalRestWarning && GameManager.Instance.PlayerGPS.IsPlayerInTown(true, true))
             {
-                DaggerfallMessageBox mb = DaggerfallUI.MessageBox(TextManager.Instance.GetText("DaggerfallUI", "illegalRestWarning"));
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+                DaggerfallMessageBox mb = DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("illegalRestWarning"));
                 mb.AddButton(DaggerfallMessageBox.MessageBoxButtons.Yes);
                 mb.AddButton(DaggerfallMessageBox.MessageBoxButtons.No);
                 mb.OnButtonClick += ConfirmIllegalRestForAWhile_OnButtonClick;
@@ -576,6 +650,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void ConfirmIllegalRestForAWhile_OnButtonClick(DaggerfallMessageBox sender, DaggerfallMessageBox.MessageBoxButtons messageBoxButton)
         {
+            sender.CloseWindow();
             if (messageBoxButton == DaggerfallMessageBox.MessageBoxButtons.Yes)
             {
                 DoRestForAWhile(true);
@@ -584,9 +659,10 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void HealedButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             if (DaggerfallUnity.Settings.IllegalRestWarning && GameManager.Instance.PlayerGPS.IsPlayerInTown(true, true))
             {
-                DaggerfallMessageBox mb = DaggerfallUI.MessageBox(TextManager.Instance.GetText("DaggerfallUI", "illegalRestWarning"));
+                DaggerfallMessageBox mb = DaggerfallUI.MessageBox(TextManager.Instance.GetLocalizedText("illegalRestWarning"));
                 mb.AddButton(DaggerfallMessageBox.MessageBoxButtons.Yes);
                 mb.AddButton(DaggerfallMessageBox.MessageBoxButtons.No);
                 mb.OnButtonClick += ConfirmIllegalRestUntilHealed_OnButtonClick;
@@ -599,6 +675,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void ConfirmIllegalRestUntilHealed_OnButtonClick(DaggerfallMessageBox sender, DaggerfallMessageBox.MessageBoxButtons messageBoxButton)
         {
+            sender.CloseWindow();
             if (messageBoxButton == DaggerfallMessageBox.MessageBoxButtons.Yes)
             {
                 DoRestUntilHealed(true);
@@ -607,8 +684,9 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void LoiterButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
             DaggerfallInputMessageBox mb = new DaggerfallInputMessageBox(uiManager, this);
-            mb.SetTextBoxLabel(HardStrings.loiterHowManyHours);
+            mb.SetTextBoxLabel(TextManager.Instance.GetLocalizedText("loiterHowManyHours"));
             mb.TextPanelDistanceX = 5;
             mb.TextPanelDistanceY = 8;
             mb.TextBox.Text = "0";
@@ -621,7 +699,22 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void StopButton_OnMouseClick(BaseScreenComponent sender, Vector2 position)
         {
-            DaggerfallUI.Instance.PopToHUD();
+            EndRest();
+            DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+        }
+
+        protected void StopButton_OnKeyboardEvent(BaseScreenComponent sender, Event keyboardEvent)
+        {
+            if (keyboardEvent.type == EventType.KeyDown)
+            {
+                DaggerfallUI.Instance.PlayOneShot(SoundClips.ButtonClick);
+                isCloseWindowDeferred = true;
+            }
+            else if (keyboardEvent.type == EventType.KeyUp && isCloseWindowDeferred)
+            {
+                isCloseWindowDeferred = false;
+                EndRest();
+            }
         }
 
         private void RestFinishedPopup_OnClose()
@@ -663,8 +756,6 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         private void LoiterPrompt_OnGotUserInput(DaggerfallInputMessageBox sender, string input)
         {
-            const int cannotLoiterMoreThan3HoursTextId = 27;
-
             // Validate input
             int time = 0;
             bool result = int.TryParse(input, out time);
@@ -678,13 +769,16 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
             }
             else if (time > DaggerfallUnity.Settings.LoiterLimitInHours)
             {
-                DaggerfallUI.MessageBox(cannotLoiterMoreThan3HoursTextId);
+                DaggerfallUI.MessageBox(new string[] { 
+                    TextManager.Instance.GetLocalizedText("cannotLoiterMoreThanXHours1"), 
+                    string.Format(TextManager.Instance.GetLocalizedText("cannotLoiterMoreThanXHours2"), DaggerfallUnity.Settings.LoiterLimitInHours) });
                 return;
             }
 
             hoursRemaining = time;
             waitTimer = Time.realtimeSinceStartup;
             currentRestMode = RestModes.Loiter;
+            playerEntity.IsLoitering = true;
         }
 
 
@@ -700,6 +794,15 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
         {
             if (OnSleepTick != null)
                 OnSleepTick();
+        }
+
+        // OnSleepEnd
+        public delegate void OnSleepEndEventHandler();
+        public static event OnSleepEndEventHandler OnSleepEnd;
+        void RaiseOnSleepEndEvent()
+        {
+            if (OnSleepEnd != null)
+                OnSleepEnd();
         }
 
         #endregion

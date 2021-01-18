@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -29,7 +29,7 @@ namespace DaggerfallWorkshop.Game
         Vector2 _smoothMouse;
         float cameraPitch = 0.0f;
         float cameraYaw = 0.0f;
-        bool cursorActive;
+        public bool cursorActive;
         float pitchMax = PitchMax;
         float pitchMin = PitchMin;
 
@@ -38,9 +38,11 @@ namespace DaggerfallWorkshop.Game
         public Vector2 sensitivity = new Vector2(2, 2);
         public Vector2 smoothing = new Vector2(3, 3);
         public float sensitivityScale = 1.0f;
+        public float joystickSensitivityScale = 1.0f;
         public bool enableMouseLook = true;
         public bool enableSmoothing = true;
         public bool simpleCursorLock = false;
+        private bool forceHideCursor;
 
         // Assign this if there's a parent object controlling motion, such as a Character Controller.
         // Yaw rotation will affect this object instead of the camera if set.
@@ -75,13 +77,13 @@ namespace DaggerfallWorkshop.Game
         public float PitchMaxLimit
         {
             get { return pitchMax; }
-            set { pitchMax = Mathf.Clamp(value, 0, PitchMax); }
+            set { pitchMax = Mathf.Clamp(value, PitchMin, PitchMax); Pitch = Pitch; }
         }
 
         public float PitchMinLimit
         {
             get { return pitchMin; }
-            set { pitchMin = Mathf.Clamp(value, 0, PitchMin); }
+            set { pitchMin = Mathf.Clamp(value, PitchMin, PitchMax); Pitch = Pitch; }
         }
 
         void Start()
@@ -91,6 +93,13 @@ namespace DaggerfallWorkshop.Game
 
         void Update()
         {
+            if (forceHideCursor)
+            {
+                Cursor.lockState = CursorLockMode.Locked;
+                InputManager.Instance.CursorVisible = false;
+                return;
+            }
+
             bool applyLook = true;
 
             // Cursor activation toggle while game is running
@@ -109,7 +118,7 @@ namespace DaggerfallWorkshop.Game
             if (cursorActive)
             {
                 Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
+                InputManager.Instance.CursorVisible = true;
 
                 if (Input.GetMouseButtonDown(0))
                 {
@@ -123,12 +132,12 @@ namespace DaggerfallWorkshop.Game
             if (lockCursor && enableMouseLook)
             {
                 Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
+                InputManager.Instance.CursorVisible = false;
             }
             else
             {
                 Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
+                InputManager.Instance.CursorVisible = true;
             }
 
             // Handle mouse look enable/disable
@@ -160,10 +169,22 @@ namespace DaggerfallWorkshop.Game
                 rawMouseDelta.y = -rawMouseDelta.y;
 
             // Scale sensitivity
-            float sensitivityX = sensitivity.x * sensitivityScale;
-            float sensitivityY = sensitivity.y * sensitivityScale;
+            float sensitivityX = 1.0f;
+            float sensitivityY = 1.0f;
 
-            if (enableSmoothing)
+            if (InputManager.Instance.UsingController)
+            {
+                sensitivityX = sensitivity.x * joystickSensitivityScale;
+                sensitivityY = sensitivity.y * joystickSensitivityScale;
+            }
+            else
+            {
+                sensitivityX = sensitivity.x * sensitivityScale;
+                sensitivityY = sensitivity.y * sensitivityScale;
+            }
+
+            //controller should just use smoothing
+            if (enableSmoothing || InputManager.Instance.UsingController)
             {
                 // Scale raw mouse delta against the smoothing value
                 Vector2 smoothMouseDelta = Vector2.Scale(rawMouseDelta, new Vector2(sensitivityX * smoothing.x, sensitivityY * smoothing.y));
@@ -233,6 +254,11 @@ namespace DaggerfallWorkshop.Game
             Quaternion q = Quaternion.LookRotation(forward);
             Vector3 v = q.eulerAngles;
             SetFacing(v.y, 0f);
+        }
+
+        public void ForceHideCursor(bool hideCursor)
+        {
+            this.forceHideCursor = hideCursor;
         }
     }
 }

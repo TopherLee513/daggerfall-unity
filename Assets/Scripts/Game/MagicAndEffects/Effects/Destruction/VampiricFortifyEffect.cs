@@ -1,5 +1,5 @@
-﻿// Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Project:         Daggerfall Tools For Unity
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -19,13 +19,12 @@ namespace DaggerfallWorkshop.Game.MagicAndEffects.MagicEffects
     /// <summary>
     /// WORK IN PROGRESS - Not currently implemented by any effects
     /// A custom effect unique to Daggerfall Unity.
-    /// Also a test-case for future effect mod support (e.g. custom text tokens for spellmaker & spellbook).
+    /// Also a test-case for future effect mod support (e.g. custom text tokens for spellmaker and spellbook).
     /// Works like a combined Drain/Fortify effect by draining target and fortifying caster by same amount.
     /// The vampiric link is permanent once establised until target dies or caster leaves the area.
     /// </summary>
     public abstract class VampiricFortifyEffect : IncumbentEffect
     {
-        //const string textDatabase = "ClassicEffects";
         const float maxLinkDistance = 25f;
 
         protected DFCareer.Stats fortifyStat = DFCareer.Stats.None;

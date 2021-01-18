@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -85,6 +85,8 @@ namespace DaggerfallWorkshop.Game.Questing
 
         StaticNPC lastNPCClicked;
         Dictionary<int, IQuestAction> factionListeners = new Dictionary<int, IQuestAction>();
+
+        System.Random internalSeed = new System.Random();
 
         #endregion
 
@@ -219,8 +221,13 @@ namespace DaggerfallWorkshop.Game.Questing
         /// </summary>
         private static string LogPath
         {
-            get { return Path.Combine(Application.persistentDataPath, questLogFilename); }
+            get { return Path.Combine(DaggerfallUnity.Settings.PersistentDataPath, questLogFilename); }
         }
+
+        /// <summary>
+        /// Return a new random seed
+        /// </summary>
+        public int InternalSeed { get { return internalSeed.Next(); } }
 
         #endregion
 
@@ -367,6 +374,7 @@ namespace DaggerfallWorkshop.Game.Questing
             RegisterAction(new DropFace(null));
             RegisterAction(new GetItem(null));
             RegisterAction(new StartQuest(null));
+            RegisterAction(new RunQuest(null));
             RegisterAction(new UnsetTask(null));
             RegisterAction(new ChangeReputeWith(null));
             RegisterAction(new ReputeExceedsDo(null));
@@ -391,6 +399,18 @@ namespace DaggerfallWorkshop.Game.Questing
             RegisterAction(new LegalRepute(null));
             RegisterAction(new MuteNpc(null));
             RegisterAction(new DestroyNpc(null));
+            RegisterAction(new WorldUpdate(null));
+            RegisterAction(new Enemies(null));
+            RegisterAction(new ClickedFoe(null));
+            RegisterAction(new KillFoe(null));
+            RegisterAction(new PayMoney(null));
+            RegisterAction(new JournalNote(null));
+            RegisterAction(new ChangeFoeInfighting(null));
+            RegisterAction(new ChangeFoeTeam(null));
+            RegisterAction(new PlaySong(null));
+            RegisterAction(new SetPlayerCrime(null));
+            RegisterAction(new SpawnCityGuards(null));
+            RegisterAction(new UnrestrainFoe(null));
 
             // Raise event for custom actions to be registered
             RaiseOnRegisterCustomerActionsEvent();
@@ -410,8 +430,15 @@ namespace DaggerfallWorkshop.Game.Questing
             {
                 if (quest != null)
                 {
-                    InstantiateQuest(quest);
-                    RaiseOnQuestStartedEvent(quest);
+                    try
+                    {
+                        StartQuest(quest);
+                        RaiseOnQuestStartedEvent(quest);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogFormat("QuestMachine encountered an exception while starting quest {0}. Quest will not be started. Exception message: '{1}'", quest.QuestName, ex.Message);
+                    }
                 }
             }
             questsToInvoke.Clear();
@@ -614,17 +641,22 @@ namespace DaggerfallWorkshop.Game.Questing
         /// <summary>
         /// Instantiate a new quest from source text array.
         /// </summary>
+        /// <param name="questName">Name of quest filename. Extensions .txt is optional.</param>
         /// <param name="questSource">Array of lines from quest source file.</param>
+        /// <param name="factionId">Faction id of quest giver for guilds.</param>
+        /// <param name="partialParse">If true the QRC and QBN sections will not be parsed.</param>
         /// <returns>Quest.</returns>
-        public Quest ParseQuest(string questName, string[] questSource)
+        public Quest ParseQuest(string questName, string[] questSource, int factionId = 0, bool partialParse = false)
         {
             LogFormat("\r\n\r\nParsing quest {0}", questName);
+
+            UnityEngine.Random.InitState(internalSeed.Next());
 
             try
             {
                 // Parse quest
                 Parser parser = new Parser();
-                Quest quest = parser.Parse(questSource);
+                Quest quest = parser.Parse(questSource, factionId, partialParse);
 
                 return quest;
             }
@@ -637,30 +669,31 @@ namespace DaggerfallWorkshop.Game.Questing
         }
 
         /// <summary>
-        /// Parse and instantiate a quest from quest name.
+        /// Parse and start a quest from quest name.
         /// </summary>
         /// <param name="questName">Quest name.</param>
         /// <param name="factionId">Faction id. (optional)</param>
         /// <returns>Quest.</returns>
-        public void InstantiateQuest(string questName, int factionId = 0)
+        public void StartQuest(string questName, int factionId = 0)
         {
             Quest quest = ParseQuest(questName);
             if (quest != null)
             {
                 quest.FactionId = factionId;
-                InstantiateQuest(quest);
+                StartQuest(quest);
             }
         }
 
         /// <summary>
-        /// Instantiate quest from a parsed quest object.
+        /// Start a parsed quest.
         /// </summary>
         /// <param name="quest">Quest.</param>
-        public void InstantiateQuest(Quest quest)
+        public void StartQuest(Quest quest)
         {
-            // init quest rumors (note Nystul: did not find a better place to do this since it must happen after quest parsing and should be called exactly one time for each quest)
-            quest.initQuestRumors();
-
+            quest.Start();
+            
+            GameManager.Instance.TalkManager.AddQuestTopicWithInfoAndRumors(quest);
+            
             quests.Add(quest.UID, quest);            
 
             RaiseOnQuestStartedEvent(quest);
@@ -920,17 +953,39 @@ namespace DaggerfallWorkshop.Game.Questing
         /// Immediately tombstones then removes all quests.
         /// </summary>
         /// <returns>Number of quests removed.</returns>
-        public int PurgeAllQuests()
+        /// <param name="keepStoryQuests">Retain main story quests (start with S0000).</param>
+        public int PurgeAllQuests(bool keepStoryQuests = false)
         {
             ulong[] uids = GetAllQuests();
             if (uids == null || uids.Length == 0)
                 return 0;
 
+            int nonStoryPurgeCount = 0;
             foreach (ulong uid in uids)
             {
-                RemoveQuest(uid);
+                if (keepStoryQuests)
+                {
+                    Quest quest = GetQuest(uid);
+                    if (quest != null && !quest.QuestName.StartsWith("S0000"))
+                    {
+                        RemoveQuest(uid);
+                        nonStoryPurgeCount++;
+                        continue;
+                    }
+                }
+                else
+                {
+                    RemoveQuest(uid);
+                }
             }
 
+            // End now if only purging non-story quest
+            if (keepStoryQuests)
+            {
+                return nonStoryPurgeCount;
+            }
+
+            // Cleanup rest of quest machine
             quests.Clear();
             siteLinks.Clear();
             questsToTombstone.Clear();
@@ -1391,10 +1446,6 @@ namespace DaggerfallWorkshop.Game.Questing
                     Debug.LogWarningFormat("CullResourceTarget() could not find Place symbol {0} in quest UID {1}", link.placeSymbol, link.questUID);
                     return;
                 }
-
-                // Do nothing if old Place same as new Place
-                if (place.Symbol.Equals(newPlace))
-                    continue;
 
                 // Modify selected spawn QuestMarker for this Place
                 QuestMarker selectedMarker = place.SiteDetails.selectedMarker;

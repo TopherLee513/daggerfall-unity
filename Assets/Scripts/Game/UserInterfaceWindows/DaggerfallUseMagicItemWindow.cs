@@ -1,5 +1,5 @@
 // Project:         Daggerfall Tools For Unity
-// Copyright:       Copyright (C) 2009-2019 Daggerfall Workshop
+// Copyright:       Copyright (C) 2009-2020 Daggerfall Workshop
 // Web Site:        http://www.dfworkshop.net
 // License:         MIT License (http://www.opensource.org/licenses/mit-license.php)
 // Source Code:     https://github.com/Interkarma/daggerfall-unity
@@ -21,6 +21,7 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
     {
 
         KeyCode toggleClosedBinding;
+        bool isCloseWindowDeferred = false;
 
         List<DaggerfallUnityItem> magicUseItems = new List<DaggerfallUnityItem>();
 
@@ -49,6 +50,8 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         public override void OnPush()
         {
+            toggleClosedBinding = InputManager.Instance.GetBinding(InputManager.Actions.UseMagicItem);
+
             if (!IsSetup)
                 return;
 
@@ -62,11 +65,16 @@ namespace DaggerfallWorkshop.Game.UserInterfaceWindows
 
         public override void Update()
         {
+            base.Update();
+
             // Toggle window closed with same hotkey used to open it
-            if (Input.GetKeyUp(toggleClosedBinding))
+            if (InputManager.Instance.GetKeyDown(toggleClosedBinding))
+                isCloseWindowDeferred = true;
+            else if (InputManager.Instance.GetKeyUp(toggleClosedBinding) && isCloseWindowDeferred)
+            {
+                isCloseWindowDeferred = false;
                 CloseWindow();
-            else
-                base.Update();
+            }
         }
 
         void Refresh()

@@ -37,7 +37,7 @@ AcceptQuest:  [1002]
 <ce>                     to a place called __contact_.
 <ce>                %g will pay you =reward_ gold pieces for
 <ce>                     bringing %g2 _foil_. Don't you
-<ce>				  just love these dangerous missions?
+<ce>                  just love these dangerous missions?
 
 QuestFail:  [1003]
 <ce>                  I have nothing to discuss with you.
@@ -253,6 +253,10 @@ _clickedElysana_ task:
 _S.13_ task:
 	when _clickedElysana_ and _giveLetter_ 
 	prompt QuestorOffer yes _yes_ no _no_ 
+
+_clearclick_ task:
+	when _clickedElysana_ and not _giveLetter_
+	clear _clickedElysana_ _clearclick_ 
 
 _S.14_ task:
 	end quest 
